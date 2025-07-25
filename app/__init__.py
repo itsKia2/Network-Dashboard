@@ -5,7 +5,8 @@ import os
 socketio = SocketIO()
 
 def create_app():
-    app = Flask(__name__)
+    # app = Flask(__name__)
+    app = Flask(__name__, template_folder='../templates')
     app.config.from_object('config.Config')
 
     # Initialize SocketIO for real-time updates

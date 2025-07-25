@@ -1,298 +1,180 @@
-import subprocess
-import re
-import socket
-import ipaddress
+from flask import Blueprint, render_template, jsonify, request
+from flask_socketio import emit
+from app import socketio
+from app.models import Device, NetworkScan, Stats
+from app.scanner import NetworkScanner
 import threading
-from datetime import datetime
 import time
-import json
+from datetime import datetime
 
-try:
-    from mac_vendor_lookup import MacLookup
-    MAC_LOOKUP_AVAILABLE = True
-except ImportError:
-    MAC_LOOKUP_AVAILABLE = False
-    print("Warning: mac-vendor-lookup not available. Install with: pip install mac-vendor-lookup")
+main = Blueprint('main', __name__)
 
-class NetworkScanner:
-    def __init__(self, network_range='192.168.1.0/24'):
-        self.network_range = network_range
-        self.devices = []
-        self.scan_lock = threading.Lock()
-        if MAC_LOOKUP_AVAILABLE:
-            self.mac_lookup = MacLookup()
+# Global scanner instance
+scanner = NetworkScanner()
+scan_in_progress = False
 
-    def get_local_network_range(self):
-        """Automatically detect local network range"""
-        try:
-            # Get local IP
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            local_ip = s.getsockname()[0]
-            s.close()
+@main.route('/')
+def dashboard():
+    """Main dashboard page"""
+    return render_template('dashboard.html')
 
-            # Assume /24 subnet
-            network = ipaddress.IPv4Network(f"{local_ip}/24", strict=False)
-            return network
-        except Exception as e:
-            print(f"Could not detect network range: {e}")
-            return ipaddress.IPv4Network(self.network_range)
+@main.route('/devices')
+def devices_page():
+    """Devices list page"""
+    return render_template('devices.html')
 
-    def scan_arp_table(self):
-        """Scan ARP table for connected devices"""
-        devices = []
-        try:
-            # Try different ARP commands based on OS
-            import platform
-            system = platform.system().lower()
+@main.route('/api/devices')
+def get_devices():
+    """API endpoint to get all devices"""
+    try:
+        devices = Device.get_all()
+        return jsonify({
+            'success': True,
+            'devices': devices,
+            'total': len(devices)
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
-            if system == 'windows':
-                result = subprocess.run(['arp', '-a'], capture_output=True, text=True, timeout=10)
-            else:
-                # Linux/Mac
-                result = subprocess.run(['arp', '-a'], capture_output=True, text=True, timeout=10)
+@main.route('/api/devices/active')
+def get_active_devices():
+    """API endpoint to get active devices"""
+    try:
+        hours = request.args.get('hours', 1, type=int)
+        devices = Device.get_active(hours=hours)
+        return jsonify({
+            'success': True,
+            'devices': devices,
+            'total': len(devices)
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
-            if result.returncode != 0:
-                print(f"ARP command failed: {result.stderr}")
-                return devices
+@main.route('/api/stats')
+def get_stats():
+    """API endpoint to get dashboard statistics"""
+    try:
+        stats = Stats.get_dashboard_stats()
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
-            # Parse ARP entries
-            for line in result.stdout.split('\n'):
-                if system == 'windows':
-                    # Windows format: 192.168.1.1    00-11-22-33-44-55    dynamic
-                    match = re.search(r'(\d+\.\d+\.\d+\.\d+)\s+([a-fA-F0-9-]{17})', line)
-                    if match:
-                        ip, mac = match.groups()
-                        mac = mac.replace('-', ':')  # Convert to standard format
-                else:
-                    # Linux/Mac format: hostname (192.168.1.1) at 00:11:22:33:44:55
-                    match = re.search(r'\((\d+\.\d+\.\d+\.\d+)\) at ([a-fA-F0-9:]{17})', line)
-                    if match:
-                        ip, mac = match.groups()
+@main.route('/api/scan', methods=['POST'])
+def trigger_scan():
+    """API endpoint to trigger network scan"""
+    global scan_in_progress
 
-                if match and self._is_valid_ip(ip):
-                    device_info = self._get_device_info(ip, mac)
-                    if device_info:
-                        device_info['method'] = 'ARP'
-                        devices.append(device_info)
+    if scan_in_progress:
+        return jsonify({
+            'success': False,
+            'error': 'Scan already in progress'
+        }), 400
 
-        except subprocess.TimeoutExpired:
-            print("ARP scan timed out")
-        except Exception as e:
-            print(f"ARP scan failed: {e}")
+    # Start scan in background thread
+    scan_thread = threading.Thread(target=perform_network_scan)
+    scan_thread.daemon = True
+    scan_thread.start()
 
-        return devices
+    return jsonify({
+        'success': True,
+        'message': 'Network scan started'
+    })
 
-    def ping_sweep(self, network_range=None):
-        """Perform ping sweep to find active devices"""
-        if network_range is None:
-            network_range = self.get_local_network_range()
+@main.route('/api/scan/status')
+def scan_status():
+    """API endpoint to get scan status"""
+    recent_scans = NetworkScan.get_recent_scans(limit=5)
+    return jsonify({
+        'success': True,
+        'scan_in_progress': scan_in_progress,
+        'recent_scans': recent_scans
+    })
 
-        active_devices = []
-        threads = []
+def perform_network_scan():
+    """Perform network scan and update database"""
+    global scan_in_progress
+    scan_in_progress = True
 
-        def ping_host(ip):
-            try:
-                import platform
-                system = platform.system().lower()
+    try:
+        # Emit scan started event
+        socketio.emit('scan_started', {'message': 'Network scan started'})
 
-                if system == 'windows':
-                    cmd = ['ping', '-n', '1', '-w', '1000', str(ip)]
-                else:
-                    cmd = ['ping', '-c', '1', '-W', '1', str(ip)]
+        # Perform the scan
+        devices_found, scan_duration = scanner.full_scan()
 
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+        # Update database
+        for device_data in devices_found:
+            Device.upsert(device_data)
 
-                if result.returncode == 0:
-                    with self.scan_lock:
-                        device_info = {
-                            'ip': str(ip),
-                            'mac': None,
-                            'hostname': self._get_hostname(str(ip)),
-                            'vendor': None,
-                            'device_type': 'Unknown',
-                            'last_seen': datetime.now(),
-                            'method': 'ping',
-                            'open_ports': []
-                        }
-                        active_devices.append(device_info)
+        # Mark old devices as inactive
+        Device.mark_inactive(cutoff_hours=2)
 
-            except Exception as e:
-                pass  # Ignore ping failures
+        # Log the scan
+        NetworkScan.log_scan(len(devices_found), scan_duration, 'full_scan')
 
-        # Create threads for parallel pinging
-        for ip in network_range.hosts():
-            thread = threading.Thread(target=ping_host, args=(ip,))
-            threads.append(thread)
-            thread.start()
+        # Emit scan completed event
+        socketio.emit('scan_completed', {
+            'message': 'Network scan completed',
+            'devices_found': len(devices_found),
+            'duration': scan_duration
+        })
 
-            # Limit concurrent threads
-            if len(threads) >= 50:
-                for t in threads:
-                    t.join()
-                threads = []
+        print(f"Network scan completed: {len(devices_found)} devices found in {scan_duration:.2f} seconds")
 
-        # Wait for remaining threads
-        for thread in threads:
-            thread.join()
+    except Exception as e:
+        print(f"Scan error: {e}")
+        socketio.emit('scan_error', {'error': str(e)})
 
-        return active_devices
+    finally:
+        scan_in_progress = False
 
-    def port_scan(self, ip, ports=None):
-        """Scan common ports on a device"""
-        if ports is None:
-            ports = [22, 23, 53, 80, 135, 139, 443, 445, 993, 995, 3389, 5900]
+# WebSocket events
+@socketio.on('connect')
+def handle_connect():
+    """Handle client connection"""
+    print('Client connected')
+    emit('connected', {'message': 'Connected to network dashboard'})
 
-        open_ports = []
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection"""
+    print('Client disconnected')
 
-        for port in ports:
-            try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(1)
-                result = sock.connect_ex((ip, port))
-                if result == 0:
-                    open_ports.append(port)
-                sock.close()
-            except Exception:
-                pass
+@socketio.on('request_device_update')
+def handle_device_update():
+    """Handle request for device updates"""
+    try:
+        devices = Device.get_all()
+        stats = Stats.get_dashboard_stats()
+        emit('device_update', {
+            'devices': devices,
+            'stats': stats
+        })
+    except Exception as e:
+        emit('error', {'message': str(e)})
 
-        return open_ports
+# Auto-scan functionality (runs every 5 minutes)
+def auto_scan():
+    """Automatic network scanning"""
+    while True:
+        time.sleep(300)  # 5 minutes
+        if not scan_in_progress:
+            print("Starting automatic network scan...")
+            perform_network_scan()
 
-    def _get_device_info(self, ip, mac):
-        """Gather additional device information"""
-        try:
-            info = {
-                'ip': ip,
-                'mac': mac,
-                'hostname': self._get_hostname(ip),
-                'vendor': self._get_vendor(mac),
-                'device_type': self._classify_device(mac, ip),
-                'last_seen': datetime.now(),
-                'open_ports': []
-            }
-
-            # Get open ports
-            info['open_ports'] = self.port_scan(ip)
-
-            return info
-
-        except Exception as e:
-            print(f"Error getting device info for {ip}: {e}")
-            return None
-
-    def _get_hostname(self, ip):
-        """Get hostname for IP address"""
-        try:
-            hostname = socket.gethostbyaddr(ip)[0]
-            return hostname
-        except:
-            return None
-
-    def _get_vendor(self, mac):
-        """Get vendor from MAC address"""
-        if not MAC_LOOKUP_AVAILABLE or not mac:
-            return None
-
-        try:
-            vendor = self.mac_lookup.lookup(mac)
-            return vendor
-        except:
-            return None
-
-    def _classify_device(self, mac, ip):
-        """Classify device type based on MAC vendor and other info"""
-        if not mac:
-            return 'Unknown'
-
-        vendor = self._get_vendor(mac)
-        if not vendor:
-            return 'Unknown'
-
-        vendor_lower = vendor.lower()
-
-        # Router/Gateway detection
-        if any(term in vendor_lower for term in ['cisco', 'netgear', 'linksys', 'asus', 'tp-link', 'dlink']):
-            return 'Router/Gateway'
-
-        # Mobile devices
-        if any(term in vendor_lower for term in ['apple', 'samsung', 'lg electronics', 'htc']):
-            return 'Mobile Device'
-
-        # Computers
-        if any(term in vendor_lower for term in ['dell', 'hp', 'lenovo', 'intel', 'asus']):
-            return 'Computer'
-
-        # IoT devices
-        if any(term in vendor_lower for term in ['amazon', 'google', 'nest', 'philips', 'sonos']):
-            return 'IoT Device'
-
-        return 'Unknown'
-
-    def _is_valid_ip(self, ip):
-        """Check if IP is valid and not a broadcast/network address"""
-        try:
-            ip_obj = ipaddress.IPv4Address(ip)
-            # Exclude broadcast and network addresses
-            if str(ip_obj).endswith('.0') or str(ip_obj).endswith('.255'):
-                return False
-            return True
-        except:
-            return False
-
-    def full_scan(self):
-        """Perform a comprehensive network scan"""
-        print("Starting network scan...")
-        start_time = time.time()
-
-        all_devices = []
-
-        # ARP scan
-        print("Scanning ARP table...")
-        arp_devices = self.scan_arp_table()
-        all_devices.extend(arp_devices)
-
-        # Ping sweep
-        print("Performing ping sweep...")
-        ping_devices = self.ping_sweep()
-
-        # Merge devices (avoid duplicates by IP)
-        existing_ips = {device['ip'] for device in all_devices}
-        for device in ping_devices:
-            if device['ip'] not in existing_ips:
-                all_devices.append(device)
-
-        # Enhance devices found via ping with ARP info
-        for device in all_devices:
-            if device['mac'] is None and device['method'] == 'ping':
-                # Try to get MAC from ARP after ping
-                mac = self._get_mac_from_arp(device['ip'])
-                if mac:
-                    device['mac'] = mac
-                    device['vendor'] = self._get_vendor(mac)
-                    device['device_type'] = self._classify_device(mac, device['ip'])
-
-        scan_duration = time.time() - start_time
-        print(f"Scan completed in {scan_duration:.2f} seconds. Found {len(all_devices)} devices.")
-
-        return all_devices, scan_duration
-
-    def _get_mac_from_arp(self, ip):
-        """Get MAC address from ARP table for specific IP"""
-        try:
-            import platform
-            system = platform.system().lower()
-
-            if system == 'windows':
-                result = subprocess.run(['arp', '-a', ip], capture_output=True, text=True, timeout=5)
-                match = re.search(r'([a-fA-F0-9-]{17})', result.stdout)
-                if match:
-                    return match.group(1).replace('-', ':')
-            else:
-                result = subprocess.run(['arp', '-n', ip], capture_output=True, text=True, timeout=5)
-                match = re.search(r'([a-fA-F0-9:]{17})', result.stdout)
-                if match:
-                    return match.group(1)
-        except:
-            pass
-
-        return None
+# Start auto-scan thread when module loads
+auto_scan_thread = threading.Thread(target=auto_scan)
+auto_scan_thread.daemon = True
+auto_scan_thread.start()
