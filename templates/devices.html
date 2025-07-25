@@ -1,0 +1,341 @@
+{% extends "base.html" %} {% block title %}Devices - Network Dashboard{%
+endblock %} {% block content %}
+<div class="devices-page">
+	<div class="page-header">
+		<h2>Network Devices</h2>
+		<div class="header-controls">
+			<div class="filter-controls">
+				<select id="device-filter" class="filter-select">
+					<option value="all">All Devices</option>
+					<option value="active">Active Only</option>
+					<option value="inactive">Inactive Only</option>
+				</select>
+
+				<select id="type-filter" class="filter-select">
+					<option value="all">All Types</option>
+					<option value="Computer">Computers</option>
+					<option value="Mobile Device">Mobile Devices</option>
+					<option value="Router/Gateway">Routers</option>
+					<option value="IoT Device">IoT Devices</option>
+					<option value="Unknown">Unknown</option>
+				</select>
+
+				<input
+					type="text"
+					id="search-input"
+					placeholder="Search devices..."
+					class="search-input"
+				/>
+			</div>
+		</div>
+	</div>
+
+	<div class="devices-summary">
+		<div class="summary-item">
+			<span class="summary-label">Total:</span>
+			<span class="summary-value" id="total-count">0</span>
+		</div>
+		<div class="summary-item">
+			<span class="summary-label">Active:</span>
+			<span class="summary-value" id="active-count">0</span>
+		</div>
+		<div class="summary-item">
+			<span class="summary-label">Filtered:</span>
+			<span class="summary-value" id="filtered-count">0</span>
+		</div>
+	</div>
+
+	<div class="devices-table-container">
+		<table class="devices-table" id="devices-table">
+			<thead>
+				<tr>
+					<th>Status</th>
+					<th>Device</th>
+					<th>IP Address</th>
+					<th>MAC Address</th>
+					<th>Vendor</th>
+					<th>Type</th>
+					<th>Open Ports</th>
+					<th>Last Seen</th>
+					<th>Actions</th>
+				</tr>
+			</thead>
+			<tbody id="devices-table-body">
+				<!-- Devices will be loaded here -->
+			</tbody>
+		</table>
+	</div>
+
+	<div class="loading-spinner" id="loading-spinner">
+		<div class="spinner"></div>
+		<p>Loading devices...</p>
+	</div>
+
+	<div class="no-devices" id="no-devices" style="display: none">
+		<p>No devices found matching your criteria.</p>
+	</div>
+</div>
+
+<!-- Device Details Modal -->
+<div id="device-modal" class="modal">
+	<div class="modal-content">
+		<div class="modal-header">
+			<h3 id="modal-title">Device Details</h3>
+			<span class="modal-close">&times;</span>
+		</div>
+		<div class="modal-body" id="modal-body">
+			<!-- Device details will be loaded here -->
+		</div>
+	</div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+	let allDevices = [];
+	let filteredDevices = [];
+
+	document.addEventListener("DOMContentLoaded", function () {
+		loadDevices();
+		setupEventListeners();
+
+		// Refresh every 30 seconds
+		setInterval(loadDevices, 30000);
+	});
+
+	function refreshData() {
+		loadDevices();
+	}
+
+	function setupEventListeners() {
+		// Filter controls
+		document
+			.getElementById("device-filter")
+			.addEventListener("change", applyFilters);
+		document
+			.getElementById("type-filter")
+			.addEventListener("change", applyFilters);
+		document
+			.getElementById("search-input")
+			.addEventListener("input", applyFilters);
+
+		// Modal controls
+		document
+			.querySelector(".modal-close")
+			.addEventListener("click", closeModal);
+		document
+			.getElementById("device-modal")
+			.addEventListener("click", function (e) {
+				if (e.target === this) closeModal();
+			});
+	}
+
+	async function loadDevices() {
+		const spinner = document.getElementById("loading-spinner");
+		spinner.style.display = "block";
+
+		try {
+			const response = await fetch("/api/devices");
+			const data = await response.json();
+
+			if (data.success) {
+				allDevices = data.devices;
+				applyFilters();
+				updateSummary();
+			} else {
+				showNotification("Error loading devices: " + data.error, "error");
+			}
+		} catch (error) {
+			console.error("Error loading devices:", error);
+			showNotification("Failed to load devices", "error");
+		} finally {
+			spinner.style.display = "none";
+		}
+	}
+
+	function applyFilters() {
+		const deviceFilter = document.getElementById("device-filter").value;
+		const typeFilter = document.getElementById("type-filter").value;
+		const searchTerm = document
+			.getElementById("search-input")
+			.value.toLowerCase();
+
+		filteredDevices = allDevices.filter((device) => {
+			// Device status filter
+			if (deviceFilter === "active" && !device.is_active) return false;
+			if (deviceFilter === "inactive" && device.is_active) return false;
+
+			// Type filter
+			if (typeFilter !== "all" && device.device_type !== typeFilter)
+				return false;
+
+			// Search filter
+			if (searchTerm) {
+				const searchableText = [
+					device.hostname || "",
+					device.ip_address || "",
+					device.mac_address || "",
+					device.vendor || "",
+					device.device_type || "",
+				]
+					.join(" ")
+					.toLowerCase();
+
+				if (!searchableText.includes(searchTerm)) return false;
+			}
+
+			return true;
+		});
+
+		displayDevices();
+		updateFilteredCount();
+	}
+
+	function displayDevices() {
+		const tbody = document.getElementById("devices-table-body");
+		const noDevices = document.getElementById("no-devices");
+
+		if (filteredDevices.length === 0) {
+			tbody.innerHTML = "";
+			noDevices.style.display = "block";
+			return;
+		}
+
+		noDevices.style.display = "none";
+
+		tbody.innerHTML = filteredDevices
+			.map((device) => {
+				const statusClass = device.is_active
+					? "status-active"
+					: "status-inactive";
+				const statusText = device.is_active ? "Active" : "Inactive";
+				const hostname = device.hostname || device.ip_address;
+				const openPorts = Array.isArray(device.open_ports)
+					? device.open_ports.join(", ")
+					: "";
+				const lastSeen = device.last_seen
+					? formatTimeAgo(new Date(device.last_seen))
+					: "Unknown";
+
+				return `
+                <tr class="device-row" data-device-id="${device.id}">
+                    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                    <td>
+                        <div class="device-info">
+                            <div class="device-name">${hostname}</div>
+                            ${
+															device.hostname &&
+															device.hostname !== device.ip_address
+																? `<div class="device-subtitle">${device.ip_address}</div>`
+																: ""
+														}
+                        </div>
+                    </td>
+                    <td>${device.ip_address}</td>
+                    <td class="mac-address">${device.mac_address || "Unknown"}</td>
+                    <td>${device.vendor || "Unknown"}</td>
+                    <td>
+                        <span class="device-type-badge">${device.device_type}</span>
+                    </td>
+                    <td class="ports-cell">
+                        ${openPorts ? `<span class="ports-badge">${openPorts}</span>` : "-"}
+                    </td>
+                    <td>${lastSeen}</td>
+                    <td>
+                        <button class="btn-details" onclick="showDeviceDetails(${device.id})">Details</button>
+                    </td>
+                </tr>
+            `;
+			})
+			.join("");
+	}
+
+	function updateSummary() {
+		const activeCount = allDevices.filter((d) => d.is_active).length;
+
+		document.getElementById("total-count").textContent = allDevices.length;
+		document.getElementById("active-count").textContent = activeCount;
+	}
+
+	function updateFilteredCount() {
+		document.getElementById("filtered-count").textContent =
+			filteredDevices.length;
+	}
+
+	function showDeviceDetails(deviceId) {
+		const device = allDevices.find((d) => d.id === deviceId);
+		if (!device) return;
+
+		const modal = document.getElementById("device-modal");
+		const title = document.getElementById("modal-title");
+		const body = document.getElementById("modal-body");
+
+		title.textContent = device.hostname || device.ip_address;
+
+		const openPorts = Array.isArray(device.open_ports) ? device.open_ports : [];
+		const firstSeen = device.first_seen
+			? new Date(device.first_seen).toLocaleString()
+			: "Unknown";
+		const lastSeen = device.last_seen
+			? new Date(device.last_seen).toLocaleString()
+			: "Unknown";
+
+		body.innerHTML = `
+            <div class="device-details">
+                <div class="detail-row">
+                    <label>Status:</label>
+                    <span class="status-badge ${device.is_active ? "status-active" : "status-inactive"}">
+                        ${device.is_active ? "Active" : "Inactive"}
+                    </span>
+                </div>
+                <div class="detail-row">
+                    <label>IP Address:</label>
+                    <span>${device.ip_address}</span>
+                </div>
+                <div class="detail-row">
+                    <label>MAC Address:</label>
+                    <span class="mac-address">${device.mac_address || "Unknown"}</span>
+                </div>
+                <div class="detail-row">
+                    <label>Hostname:</label>
+                    <span>${device.hostname || "Not resolved"}</span>
+                </div>
+                <div class="detail-row">
+                    <label>Vendor:</label>
+                    <span>${device.vendor || "Unknown"}</span>
+                </div>
+                <div class="detail-row">
+                    <label>Device Type:</label>
+                    <span class="device-type-badge">${device.device_type}</span>
+                </div>
+                <div class="detail-row">
+                    <label>Open Ports:</label>
+                    <span>${openPorts.length > 0 ? openPorts.join(", ") : "None detected"}</span>
+                </div>
+                <div class="detail-row">
+                    <label>First Seen:</label>
+                    <span>${firstSeen}</span>
+                </div>
+                <div class="detail-row">
+                    <label>Last Seen:</label>
+                    <span>${lastSeen}</span>
+                </div>
+                ${
+									device.notes
+										? `
+                <div class="detail-row">
+                    <label>Notes:</label>
+                    <span>${device.notes}</span>
+                </div>
+                `
+										: ""
+								}
+            </div>
+        `;
+
+		modal.style.display = "block";
+	}
+
+	function closeModal() {
+		document.getElementById("device-modal").style.display = "none";
+	}
+</script>
+{% endblock %}

@@ -1,0 +1,231 @@
+{% extends "base.html" %} {% block content %}
+<div class="dashboard">
+	<!-- Statistics Cards -->
+	<div class="stats-grid">
+		<div class="stat-card">
+			<div class="stat-icon">🌐</div>
+			<div class="stat-content">
+				<h3>Total Devices</h3>
+				<div class="stat-number" id="total-devices">-</div>
+			</div>
+		</div>
+
+		<div class="stat-card">
+			<div class="stat-icon">✅</div>
+			<div class="stat-content">
+				<h3>Active Devices</h3>
+				<div class="stat-number" id="active-devices">-</div>
+			</div>
+		</div>
+
+		<div class="stat-card">
+			<div class="stat-icon">🆕</div>
+			<div class="stat-content">
+				<h3>New Today</h3>
+				<div class="stat-number" id="new-today">-</div>
+			</div>
+		</div>
+
+		<div class="stat-card">
+			<div class="stat-icon">🕐</div>
+			<div class="stat-content">
+				<h3>Last Scan</h3>
+				<div class="stat-time" id="last-scan">-</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Charts Section -->
+	<div class="charts-section">
+		<div class="chart-container">
+			<h3>Device Types</h3>
+			<canvas id="deviceTypeChart"></canvas>
+		</div>
+
+		<div class="chart-container">
+			<h3>Network Activity</h3>
+			<canvas id="activityChart"></canvas>
+		</div>
+	</div>
+
+	<!-- Recent Devices -->
+	<div class="recent-devices">
+		<div class="section-header">
+			<h3>Recently Seen Devices</h3>
+			<a href="/devices" class="view-all-link">View All</a>
+		</div>
+
+		<div class="devices-grid" id="recent-devices-grid">
+			<!-- Devices will be loaded here -->
+		</div>
+	</div>
+
+	<!-- Network Map (Placeholder) -->
+	<div class="network-map">
+		<h3>Network Overview</h3>
+		<div class="map-placeholder">
+			<p>Network topology visualization will be displayed here</p>
+			<div class="network-nodes">
+				<div class="node router">Router</div>
+				<div class="node device">Device 1</div>
+				<div class="node device">Device 2</div>
+				<div class="node device">Device 3</div>
+			</div>
+		</div>
+	</div>
+</div>
+{% endblock %} {% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+	let deviceTypeChart, activityChart;
+
+	// Initialize dashboard
+	document.addEventListener("DOMContentLoaded", function () {
+		initializeCharts();
+		loadDashboardData();
+
+		// Refresh data every 30 seconds
+		setInterval(loadDashboardData, 30000);
+	});
+
+	function refreshData() {
+		loadDashboardData();
+	}
+
+	async function loadDashboardData() {
+		try {
+			// Load statistics
+			const statsResponse = await fetch("/api/stats");
+			const statsData = await statsResponse.json();
+
+			if (statsData.success) {
+				updateStatistics(statsData.stats);
+			}
+
+			// Load recent devices
+			const devicesResponse = await fetch("/api/devices/active?hours=24");
+			const devicesData = await devicesResponse.json();
+
+			if (devicesData.success) {
+				displayRecentDevices(devicesData.devices.slice(0, 6));
+				updateCharts(devicesData.devices);
+			}
+		} catch (error) {
+			console.error("Error loading dashboard data:", error);
+			showNotification("Error loading dashboard data", "error");
+		}
+	}
+
+	function updateStatistics(stats) {
+		document.getElementById("total-devices").textContent = stats.total_devices;
+		document.getElementById("active-devices").textContent =
+			stats.active_devices;
+		document.getElementById("new-today").textContent = stats.new_today;
+
+		if (stats.last_scan) {
+			const lastScan = new Date(stats.last_scan);
+			document.getElementById("last-scan").textContent =
+				formatTimeAgo(lastScan);
+		} else {
+			document.getElementById("last-scan").textContent = "Never";
+		}
+	}
+
+	function displayRecentDevices(devices) {
+		const grid = document.getElementById("recent-devices-grid");
+		grid.innerHTML = "";
+
+		devices.forEach((device) => {
+			const deviceCard = createDeviceCard(device, true);
+			grid.appendChild(deviceCard);
+		});
+	}
+
+	function initializeCharts() {
+		// Device Types Chart
+		const deviceTypeCtx = document
+			.getElementById("deviceTypeChart")
+			.getContext("2d");
+		deviceTypeChart = new Chart(deviceTypeCtx, {
+			type: "doughnut",
+			data: {
+				labels: [],
+				datasets: [
+					{
+						data: [],
+						backgroundColor: [
+							"#FF6384",
+							"#36A2EB",
+							"#FFCE56",
+							"#4BC0C0",
+							"#9966FF",
+							"#FF9F40",
+						],
+					},
+				],
+			},
+			options: {
+				responsive: true,
+				maintainAspectRatio: false,
+			},
+		});
+
+		// Activity Chart
+		const activityCtx = document
+			.getElementById("activityChart")
+			.getContext("2d");
+		activityChart = new Chart(activityCtx, {
+			type: "line",
+			data: {
+				labels: [],
+				datasets: [
+					{
+						label: "Active Devices",
+						data: [],
+						borderColor: "#36A2EB",
+						backgroundColor: "rgba(54, 162, 235, 0.1)",
+						tension: 0.4,
+					},
+				],
+			},
+			options: {
+				responsive: true,
+				maintainAspectRatio: false,
+				scales: {
+					y: {
+						beginAtZero: true,
+					},
+				},
+			},
+		});
+	}
+
+	function updateCharts(devices) {
+		// Update device types chart
+		const deviceTypes = {};
+		devices.forEach((device) => {
+			const type = device.device_type || "Unknown";
+			deviceTypes[type] = (deviceTypes[type] || 0) + 1;
+		});
+
+		deviceTypeChart.data.labels = Object.keys(deviceTypes);
+		deviceTypeChart.data.datasets[0].data = Object.values(deviceTypes);
+		deviceTypeChart.update();
+
+		// Update activity chart (mock data for now)
+		const hours = [];
+		const counts = [];
+		for (let i = 23; i >= 0; i--) {
+			const hour = new Date();
+			hour.setHours(hour.getHours() - i);
+			hours.push(hour.getHours() + ":00");
+			counts.push(Math.floor(Math.random() * devices.length) + 1);
+		}
+
+		activityChart.data.labels = hours;
+		activityChart.data.datasets[0].data = counts;
+		activityChart.update();
+	}
+</script>
+{% endblock %}
