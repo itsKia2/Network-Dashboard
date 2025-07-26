@@ -102,36 +102,43 @@ def scan_status():
         'recent_scans': recent_scans
     })
 
+from app.app_ctx import app
 def perform_network_scan():
     """Perform network scan and update database"""
     global scan_in_progress
     scan_in_progress = True
 
     try:
-        # Emit scan started event
-        socketio.emit('scan_started', {'message': 'Network scan started'})
+        with app.app_context():
+            # Emit scan started event
+            socketio.emit('scan_started', {'message': 'Network scan started'})
 
-        # Perform the scan
-        devices_found, scan_duration = scanner.full_scan()
+            # Perform the scan
+            devices_found, scan_duration = scanner.full_scan()
 
-        # Update database
-        for device_data in devices_found:
-            Device.upsert(device_data)
+            # Update database
+            for device_data in devices_found:
+                # Normalize keys for DB
+                if 'ip' in device_data:
+                    device_data['ip_address'] = device_data['ip']
+                if 'mac' in device_data:
+                    device_data['mac_address'] = device_data['mac']
+                Device.upsert(device_data)
 
-        # Mark old devices as inactive
-        Device.mark_inactive(cutoff_hours=2)
+            # Mark old devices as inactive
+            Device.mark_inactive(cutoff_hours=2)
 
-        # Log the scan
-        NetworkScan.log_scan(len(devices_found), scan_duration, 'full_scan')
+            # Log the scan
+            NetworkScan.log_scan(len(devices_found), scan_duration, 'full_scan')
 
-        # Emit scan completed event
-        socketio.emit('scan_completed', {
-            'message': 'Network scan completed',
-            'devices_found': len(devices_found),
-            'duration': scan_duration
-        })
+            # Emit scan completed event
+            socketio.emit('scan_completed', {
+                'message': 'Network scan completed',
+                'devices_found': len(devices_found),
+                'duration': scan_duration
+            })
 
-        print(f"Network scan completed: {len(devices_found)} devices found in {scan_duration:.2f} seconds")
+            print(f"Network scan completed: {len(devices_found)} devices found in {scan_duration:.2f} seconds")
 
     except Exception as e:
         print(f"Scan error: {e}")
