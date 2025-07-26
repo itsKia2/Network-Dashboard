@@ -25,7 +25,7 @@ function initializeDashboard() {
  * Setup auto-refresh functionality
  */
 function setupAutoRefresh() {
-	const refreshInterval = 30000; // 30 seconds
+	const refreshInterval = 10000; // 10 seconds
 
 	autoRefreshInterval = setInterval(() => {
 		if (isAutoRefreshEnabled && document.visibilityState === "visible") {

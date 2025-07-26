@@ -11,7 +11,6 @@ from mac_vendor_lookup import MacLookup
 from config import Config as conf
 networkRange = conf.NETWORK_RANGE
 
-
 try:
     from mac_vendor_lookup import MacLookup
     MAC_LOOKUP_AVAILABLE = True
@@ -96,6 +95,7 @@ class NetworkScanner:
                 import platform
                 system = platform.system().lower()
 
+                # different commands for windows/linux(mac)
                 if system == 'windows':
                     cmd = ['ping', '-n', '1', '-w', '1000', str(ip)]
                 else:
@@ -141,7 +141,7 @@ class NetworkScanner:
     def port_scan(self, ip, ports=None):
         """Scan common ports on a device"""
         if ports is None:
-            ports = [22, 23, 53, 80, 135, 139, 443, 445, 993, 995, 3389, 5900]
+            ports = [22, 23, 24, 53, 80, 135, 139, 443, 445, 993, 995, 3000, 3389, 5050, 5060, 5900, 8080]
 
         open_ports = []
 
@@ -173,9 +173,7 @@ class NetworkScanner:
 
             # Get open ports
             info['open_ports'] = self.port_scan(ip)
-
             return info
-
         except Exception as e:
             print(f"Error getting device info for {ip}: {e}")
             return None
@@ -192,7 +190,6 @@ class NetworkScanner:
         """Get vendor from MAC address"""
         if not MAC_LOOKUP_AVAILABLE or not mac:
             return None
-
         try:
             vendor = self.mac_lookup.lookup(mac)
             return vendor
@@ -213,19 +210,15 @@ class NetworkScanner:
         # Router/Gateway detection
         if any(term in vendor_lower for term in ['cisco', 'netgear', 'linksys', 'asus', 'tp-link', 'dlink']):
             return 'Router/Gateway'
-
         # Mobile devices
         if any(term in vendor_lower for term in ['apple', 'samsung', 'lg electronics', 'htc', 'pixel']):
             return 'Mobile Device'
-
         # Computers
         if any(term in vendor_lower for term in ['dell', 'hp', 'lenovo', 'intel', 'asus', 'framework']):
             return 'Computer'
-
         # IoT devices
         if any(term in vendor_lower for term in ['amazon', 'google', 'nest', 'philips', 'sonos']):
             return 'IoT Device'
-
         return 'Unknown'
 
     def _is_valid_ip(self, ip):
