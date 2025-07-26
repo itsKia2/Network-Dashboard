@@ -20,8 +20,10 @@
 				<div class="nav-links">
 					<a href="/" class="nav-link">Dashboard</a>
 					<a href="/devices" class="nav-link">Devices</a>
-					<button id="scan-btn" type="button" class="scan-button">Scan Network</button>
-					<span id="scan-status" style="margin-left:1em;"></span>
+					<button id="scan-btn" type="button" class="scan-button">
+						Scan Network
+					</button>
+					<span id="scan-status" style="margin-left: 1em"></span>
 				</div>
 			</div>
 		</nav>
@@ -35,81 +37,90 @@
 			</button>
 		</div>
 
-socket.on('scan_started', function(data) {
-socket.on('connect_error', function(err) {
-socket.on('scan_completed', function(data) {
-socket.on('scan_error', function(data) {
-<script src="{{ url_for('static', filename='js/utils.js') }}"></script>
-<script>
-const scanBtn = document.getElementById('scan-btn');
-const socket = io();
+		socket.on('scan_started', function(data) { socket.on('connect_error',
+		function(err) { socket.on('scan_completed', function(data) {
+		socket.on('scan_error', function(data) {
+		<script src="{{ url_for('static', filename='js/utils.js') }}"></script>
+		<script>
+			const scanBtn = document.getElementById("scan-btn");
+			const socket = io();
 
-function showNotification(message, type = "info") {
-  const notification = document.getElementById("notification");
-  const messageElement = document.getElementById("notification-message");
-  messageElement.textContent = message;
-  notification.className = `notification ${type}`;
-  notification.classList.remove("hidden");
-  setTimeout(() => {
-	notification.classList.add("hidden");
-  }, 5000);
-}
-document.getElementById("notification-close").onclick = function() {
-  document.getElementById("notification").classList.add("hidden");
-};
+			function showNotification(message, type = "info") {
+				const notification = document.getElementById("notification");
+				const messageElement = document.getElementById("notification-message");
+				messageElement.textContent = message;
+				notification.className = `notification ${type}`;
+				notification.classList.remove("hidden");
+				setTimeout(() => {
+					notification.classList.add("hidden");
+				}, 5000);
+			}
+			document.getElementById("notification-close").onclick = function () {
+				document.getElementById("notification").classList.add("hidden");
+			};
 
-if (scanBtn) {
-  scanBtn.addEventListener('click', function(e) {
-	e.preventDefault();
-	scanBtn.disabled = true;
-	scanBtn.textContent = "Scanning...";
-	fetch('/api/scan', {method: 'POST'})
-	  .then(res => res.json())
-	  .then(data => {
-		if (!data.success) {
-		  scanBtn.disabled = false;
-		  scanBtn.textContent = "Scan Network";
-		  showNotification(data.error || "Scan failed to start.", "error");
-		}
-	  })
-	  .catch(() => {
-		scanBtn.disabled = false;
-		scanBtn.textContent = "Scan Network";
-		showNotification("Scan failed to start.", "error");
-	  });
-  });
-}
+			if (scanBtn) {
+				scanBtn.addEventListener("click", function (e) {
+					e.preventDefault();
+					scanBtn.disabled = true;
+					scanBtn.textContent = "Scanning...";
+					fetch("/api/scan", { method: "POST" })
+						.then((res) => res.json())
+						.then((data) => {
+							if (!data.success) {
+								scanBtn.disabled = false;
+								scanBtn.textContent = "Scan Network";
+								showNotification(
+									data.error || "Scan failed to start.",
+									"error",
+								);
+							}
+						})
+						.catch(() => {
+							scanBtn.disabled = false;
+							scanBtn.textContent = "Scan Network";
+							showNotification("Scan failed to start.", "error");
+						});
+				});
+			}
 
-socket.on('scan_started', function(data) {
-  if (scanBtn) {
-	scanBtn.disabled = true;
-	scanBtn.textContent = "Scanning...";
-  }
-  showNotification(data && data.message ? data.message : "Scan started...", "info");
-});
+			socket.on("scan_started", function (data) {
+				if (scanBtn) {
+					scanBtn.disabled = true;
+					scanBtn.textContent = "Scanning...";
+				}
+				showNotification(
+					data && data.message ? data.message : "Scan started...",
+					"info",
+				);
+			});
 
-socket.on('scan_completed', function(data) {
-  if (scanBtn) {
-	scanBtn.disabled = false;
-	scanBtn.textContent = "Scan Network";
-  }
-  showNotification(
-	data && typeof data.devices_found !== 'undefined'
-	  ? `Scan completed! ${data.devices_found} devices found.`
-	  : "Scan completed!",
-	"success"
-  );
-  if (typeof refreshData === "function") refreshData();
-});
+			socket.on("scan_completed", function (data) {
+				if (scanBtn) {
+					scanBtn.disabled = false;
+					scanBtn.textContent = "Scan Network";
+				}
+				showNotification(
+					data && typeof data.devices_found !== "undefined"
+						? `Scan completed! ${data.devices_found} devices found.`
+						: "Scan completed!",
+					"success",
+				);
+				if (typeof refreshData === "function") refreshData();
+			});
 
-socket.on('scan_error', function(data) {
-  if (scanBtn) {
-	scanBtn.disabled = false;
-	scanBtn.textContent = "Scan Network";
-  }
-  showNotification(data && data.error ? "Scan error: " + data.error : "Scan error.", "error");
-});
-</script>
+			socket.on("scan_error", function (data) {
+				if (scanBtn) {
+					scanBtn.disabled = false;
+					scanBtn.textContent = "Scan Network";
+				}
+				showNotification(
+					data && data.error ? "Scan error: " + data.error : "Scan error.",
+					"error",
+				);
+			});
+		</script>
+
 		{% block scripts %}{% endblock %}
 	</body>
 </html>
