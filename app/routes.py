@@ -110,23 +110,29 @@ def perform_network_scan():
 
     try:
         with app.app_context():
+            # Set all devices to inactive before scan
+            from app.models import DatabaseManager
+            conn = DatabaseManager.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE devices SET is_active = 0")
+            conn.commit()
+            conn.close()
+
             # Emit scan started event
             socketio.emit('scan_started', {'message': 'Network scan started'})
 
             # Perform the scan
             devices_found, scan_duration = scanner.full_scan()
 
-            # Update database
+            # Update database and mark found devices as active
             for device_data in devices_found:
                 # Normalize keys for DB
                 if 'ip' in device_data:
                     device_data['ip_address'] = device_data['ip']
                 if 'mac' in device_data:
                     device_data['mac_address'] = device_data['mac']
+                device_data['is_active'] = 1
                 Device.upsert(device_data)
-
-            # Mark old devices as inactive
-            Device.mark_inactive(cutoff_hours=2)
 
             # Log the scan
             NetworkScan.log_scan(len(devices_found), scan_duration, 'full_scan')
