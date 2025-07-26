@@ -8,6 +8,10 @@ import time
 import json
 from mac_vendor_lookup import MacLookup
 
+from config import Config as conf
+networkRange = conf.NETWORK_RANGE
+
+
 try:
     from mac_vendor_lookup import MacLookup
     MAC_LOOKUP_AVAILABLE = True
@@ -16,7 +20,7 @@ except ImportError:
     print("Warning: mac-vendor-lookup not available. Install with: pip install mac-vendor-lookup")
 
 class NetworkScanner:
-    def __init__(self, network_range='192.168.1.0/24'):
+    def __init__(self, network_range=networkRange):
         self.network_range = network_range
         self.devices = []
         self.scan_lock = threading.Lock()
@@ -43,15 +47,10 @@ class NetworkScanner:
         """Scan ARP table for connected devices"""
         devices = []
         try:
-            # Try different ARP commands based on OS
             import platform
             system = platform.system().lower()
 
-            if system == 'windows':
-                result = subprocess.run(['arp', '-a'], capture_output=True, text=True, timeout=10)
-            else:
-                # Linux/Mac
-                result = subprocess.run(['arp', '-a'], capture_output=True, text=True, timeout=10)
+            result = subprocess.run(['arp', '-a'], capture_output=True, text=True, timeout=10)
 
             if result.returncode != 0:
                 print(f"ARP command failed: {result.stderr}")
@@ -216,11 +215,11 @@ class NetworkScanner:
             return 'Router/Gateway'
 
         # Mobile devices
-        if any(term in vendor_lower for term in ['apple', 'samsung', 'lg electronics', 'htc']):
+        if any(term in vendor_lower for term in ['apple', 'samsung', 'lg electronics', 'htc', 'pixel']):
             return 'Mobile Device'
 
         # Computers
-        if any(term in vendor_lower for term in ['dell', 'hp', 'lenovo', 'intel', 'asus']):
+        if any(term in vendor_lower for term in ['dell', 'hp', 'lenovo', 'intel', 'asus', 'framework']):
             return 'Computer'
 
         # IoT devices
@@ -267,7 +266,7 @@ class NetworkScanner:
             if device['mac'] is None and device['method'] == 'ping':
                 # Try to get MAC from ARP after ping
                 mac = self._get_mac_from_arp(device['ip'])
-                if mac:
+                if mac != None:
                     device['mac'] = mac
                     device['vendor'] = self._get_vendor(mac)
                     device['device_type'] = self._classify_device(mac, device['ip'])

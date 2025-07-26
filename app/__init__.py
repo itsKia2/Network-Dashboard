@@ -12,11 +12,10 @@ def create_app():
     )
     app.config.from_object('config.Config')
 
-    # Initialize SocketIO for real-time updates
-    socketio.init_app(app, cors_allowed_origins="*")
-
     # Register blueprints
     from app.routes import main
     app.register_blueprint(main)
+
+    socketio.init_app(app, cors_allowed_origins="*")
 
     return app
