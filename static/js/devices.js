@@ -1,3 +1,59 @@
+// --- Search and Filter Logic ---
+let allDevices = [];
+let currentStatusFilter = 'all';
+let currentTypeFilter = 'all';
+let currentSearch = '';
+
+function filterDevices(devices, status, type, search) {
+  return devices.filter(device => {
+	// Status filter
+	if (status === 'active' && !device.is_active) return false;
+	if (status === 'inactive' && device.is_active) return false;
+	// Type filter
+	if (type !== 'all' && device.device_type !== type) return false;
+	// Search filter (case-insensitive, matches hostname, IP, MAC, vendor)
+	if (search) {
+	  const s = search.toLowerCase();
+	  if (!(
+		(device.hostname && device.hostname.toLowerCase().includes(s)) ||
+		(device.ip_address && device.ip_address.toLowerCase().includes(s)) ||
+		(device.mac_address && device.mac_address.toLowerCase().includes(s)) ||
+		(device.vendor && device.vendor.toLowerCase().includes(s))
+	  )) return false;
+	}
+	return true;
+  });
+}
+
+function applyFiltersAndRender() {
+	const filtered = filterDevices(allDevices, currentStatusFilter, currentTypeFilter, currentSearch);
+	updateDevicesTable(filtered);
+}
+
+function setupFilterUI() {
+	const statusSelect = document.getElementById('device-filter');
+	const typeSelect = document.getElementById('type-filter');
+	const searchInput = document.getElementById('search-input');
+
+	if (statusSelect) {
+		statusSelect.addEventListener('change', e => {
+			currentStatusFilter = e.target.value;
+			applyFiltersAndRender();
+		});
+	}
+	if (typeSelect) {
+		typeSelect.addEventListener('change', e => {
+			currentTypeFilter = e.target.value;
+			applyFiltersAndRender();
+		});
+	}
+	if (searchInput) {
+		searchInput.addEventListener('input', e => {
+			currentSearch = e.target.value;
+			applyFiltersAndRender();
+		});
+	}
+}
 // Devices page JavaScript for real-time updates
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -7,6 +63,7 @@ document.addEventListener("DOMContentLoaded", function () {
 function initializeDevicesPage() {
 	loadDevicesData();
 	setupSocketListeners();
+	setupFilterUI();
 }
 
 // Allow external refresh (e.g. from scan notification)
@@ -30,9 +87,10 @@ async function loadDevicesData() {
 		console.log("/api/stats response:", statsData);
 
 		if (devicesData.success) {
-			updateDevicesTable(devicesData.devices);
+			allDevices = devicesData.devices;
+			applyFiltersAndRender();
 			updateDeviceSummary(statsData.stats);
-			if (devicesData.devices.length === 0 && noDevices) {
+			if (allDevices.length === 0 && noDevices) {
 				noDevices.style.display = "block";
 			}
 		} else {

@@ -6,7 +6,6 @@ import threading
 from datetime import datetime
 import time
 import json
-from mac_vendor_lookup import MacLookup
 
 from config import Config as conf
 networkRange = conf.NETWORK_RANGE
