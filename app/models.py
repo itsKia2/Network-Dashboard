@@ -26,7 +26,8 @@ class Device:
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT * FROM devices
+            SELECT id, ip_address, mac_address, hostname, vendor, device_type, first_seen, last_seen, is_active, open_ports
+            FROM devices
             ORDER BY last_seen DESC
         """)
 
@@ -54,7 +55,8 @@ class Device:
 
         cutoff_time = datetime.now() - timedelta(hours=hours)
         cursor.execute("""
-            SELECT * FROM devices
+            SELECT id, ip_address, mac_address, hostname, vendor, device_type, first_seen, last_seen, is_active, open_ports
+            FROM devices
             WHERE last_seen > ? AND is_active = 1
             ORDER BY last_seen DESC
         """, (cutoff_time,))
@@ -65,7 +67,7 @@ class Device:
 
     @staticmethod
     def upsert(device_data):
-        """Insert or update device information"""
+        """Insert or update device information, tracking first_seen and last_seen"""
         conn = DatabaseManager.get_connection()
         cursor = conn.cursor()
 
@@ -74,11 +76,11 @@ class Device:
             device_data['open_ports'] = json.dumps(device_data['open_ports'])
 
         # Check if device exists (by MAC address)
-        cursor.execute("SELECT id FROM devices WHERE mac_address = ?", (device_data.get('mac_address'),))
+        cursor.execute("SELECT id, first_seen FROM devices WHERE mac_address = ?", (device_data.get('mac_address'),))
         existing = cursor.fetchone()
 
         if existing:
-            # Update existing device
+            # Update existing device, preserve first_seen
             cursor.execute("""
                 UPDATE devices SET
                     ip_address = ?,
@@ -99,12 +101,12 @@ class Device:
             ))
             device_id = existing[0]
         else:
-            # Insert new device
+            # Insert new device, set both first_seen and last_seen to now
             cursor.execute("""
                 INSERT INTO devices (
                     ip_address, mac_address, hostname, vendor,
-                    device_type, open_ports
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    device_type, open_ports, first_seen, last_seen
+                ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """, (
                 device_data.get('ip_address'),
                 device_data.get('mac_address'),

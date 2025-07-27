@@ -7,11 +7,10 @@ CREATE TABLE IF NOT EXISTS devices (
     hostname VARCHAR(255),
     vendor VARCHAR(255),
     device_type VARCHAR(50) DEFAULT 'Unknown',
-    first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+    first_seen DATETIME DEFAULT CURRENT_TIMESTAMP, -- remove
     last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
     is_active BOOLEAN DEFAULT 1,
-    open_ports TEXT,  -- JSON string of open ports
-    notes TEXT
+    open_ports TEXT  -- JSON string of open ports
 );
 
 CREATE TABLE IF NOT EXISTS device_history (

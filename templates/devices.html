@@ -1,91 +1,93 @@
-{% extends "base.html" %}
-{% block title %}Devices - Network Dashboard{% endblock %}
-{% block content %}
+{% extends "base.html" %} {% block title %}Devices - Network Dashboard{%
+endblock %} {% block content %}
 <div class="devices-page">
-    <div class="page-header">
-        <h2><span class="icon">🖧</span> Network Devices</h2>
-        <div class="header-controls">
-            <div class="filter-controls">
-                <select id="device-filter" class="filter-select">
-                    <option value="all">All Devices</option>
-                    <option value="active">Active Only</option>
-                    <option value="inactive">Inactive Only</option>
-                </select>
-                <select id="type-filter" class="filter-select">
-                    <option value="all">All Types</option>
-                    <option value="Computer">Computers</option>
-                    <option value="Mobile Device">Mobile Devices</option>
-                    <option value="Router/Gateway">Routers</option>
-                    <option value="IoT Device">IoT Devices</option>
-                    <option value="Unknown">Unknown</option>
-                </select>
-                <input type="text" id="search-input" placeholder="Search devices..." class="search-input" />
-            </div>
-            <button id="refresh-btn" class="refresh-btn">🔄 Refresh</button>
-        </div>
+  <div class="page-header">
+    <h2><span class="icon">🖧</span> Network Devices</h2>
+    <div class="header-controls">
+      <div class="filter-controls">
+        <select id="device-filter" class="filter-select">
+          <option value="all">All Devices</option>
+          <option value="active">Active Only</option>
+          <option value="inactive">Inactive Only</option>
+        </select>
+        <select id="type-filter" class="filter-select">
+          <option value="all">All Types</option>
+          <option value="Computer">Computers</option>
+          <option value="Mobile Device">Mobile Devices</option>
+          <option value="Router/Gateway">Routers</option>
+          <option value="IoT Device">IoT Devices</option>
+          <option value="Unknown">Unknown</option>
+        </select>
+        <input
+          type="text"
+          id="search-input"
+          placeholder="Search devices..."
+          class="search-input"
+        />
+      </div>
+      <button id="refresh-btn" class="refresh-btn">🔄 Refresh</button>
     </div>
+  </div>
 
-    <div class="devices-summary-cards">
-        <div class="summary-card">
-            <div class="summary-title">Total Devices</div>
-            <div class="summary-value" id="total-count">0</div>
-        </div>
-        <div class="summary-card">
-            <div class="summary-title">Active Devices</div>
-            <div class="summary-value" id="active-count">0</div>
-        </div>
-        <div class="summary-card">
-            <div class="summary-title">Filtered</div>
-            <div class="summary-value" id="filtered-count">0</div>
-        </div>
+  <div class="devices-summary-cards">
+    <div class="summary-card">
+      <div class="summary-title">Total Devices</div>
+      <div class="summary-value" id="total-count">0</div>
     </div>
+    <div class="summary-card">
+      <div class="summary-title">Active Devices</div>
+      <div class="summary-value" id="active-count">0</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-title">Filtered</div>
+      <div class="summary-value" id="filtered-count">0</div>
+    </div>
+  </div>
 
-    <div class="devices-table-container">
-        <table class="devices-table" id="devices-table">
-            <thead>
-                <tr>
-                    <th>Status</th>
-                    <th>Device</th>
-                    <th>IP Address</th>
-                    <th>MAC Address</th>
-                    <th>Vendor</th>
-                    <th>Type</th>
-                    <th>Open Ports</th>
-                    <th>First Seen</th>
-                    <th>Last Seen</th>
-                    <th>Notes</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="devices-table-body">
-                <!-- Devices will be loaded here -->
-            </tbody>
-        </table>
-    </div>
+  <div class="devices-table-container">
+    <table class="devices-table" id="devices-table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Device</th>
+          <th>IP Address</th>
+          <th>MAC Address</th>
+          <th>Vendor</th>
+          <th>Type</th>
+          <th>Open Ports</th>
+          <!-- <th>First Seen</th> --> <!-- dont want to show this -->
+          <th>Last Seen</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="devices-table-body">
+        <!-- Devices will be loaded here -->
+      </tbody>
+    </table>
+  </div>
 
-    <div class="loading-spinner" id="loading-spinner">
-        <div class="spinner"></div>
-        <p>Loading devices...</p>
-    </div>
+  <div class="loading-spinner" id="loading-spinner">
+    <div class="spinner"></div>
+    <p>Loading devices...</p>
+  </div>
 
-    <div class="no-devices" id="no-devices" style="display: none">
-        <p>No devices found matching your criteria.</p>
-    </div>
+  <div class="no-devices" id="no-devices" style="display: none">
+    <p>No devices found matching your criteria.</p>
+  </div>
 </div>
 
 <!-- Device Details Modal -->
 <div id="device-modal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3 id="modal-title">Device Details</h3>
-            <span class="modal-close">&times;</span>
-        </div>
-        <div class="modal-body" id="modal-body">
-            <!-- Device details will be loaded here -->
-        </div>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="modal-title">Device Details</h3>
+      <span class="modal-close">&times;</span>
     </div>
+    <div class="modal-body" id="modal-body">
+      <!-- Device details will be loaded here -->
+    </div>
+  </div>
 </div>
-{% endblock %}
-{% block scripts %}
+{% endblock %} {% block scripts %}
 <script src="{{ url_for('static', filename='js/devices.js') }}"></script>
 {% endblock %}

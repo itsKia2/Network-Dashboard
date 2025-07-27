@@ -54,17 +54,19 @@ function updateDevicesTable(devices) {
 	tbody.innerHTML = "";
 	devices.forEach(device => {
 		const row = document.createElement("tr");
-		row.innerHTML = `
-			<td>${device.is_active ? "<span class='active-dot'></span>" : "<span class='inactive-dot'></span>"}</td>
-			<td>${device.hostname || device.ip_address || "Unknown"}</td>
-			<td>${device.ip_address || "-"}</td>
-			<td>${device.mac_address || "-"}</td>
-			<td>${device.vendor || "-"}</td>
-			<td>${device.device_type || "-"}</td>
-			<td>${Array.isArray(device.open_ports) ? device.open_ports.length : 0}</td>
-			<td>${device.last_seen ? new Date(device.last_seen).toLocaleString() : "-"}</td>
-			<td><!-- Actions --></td>
-		`;
+		// <td>${device.first_seen ? new Date(device.first_seen).toLocaleString() : "-"}</td>
+		// IGNORE: First seen date is not needed in the current view
+	row.innerHTML = `
+		<td>${device.is_active ? '<span class="active-dot"></span> Active' : '<span class="inactive-dot"></span> Inactive'}</td>
+		<td>${device.hostname || device.ip_address || "Unknown"}</td>
+		<td>${device.ip_address || "-"}</td>
+		<td>${device.mac_address || "-"}</td>
+		<td>${device.vendor || "-"}</td>
+		<td>${device.device_type || "-"}</td>
+		<td>${Array.isArray(device.open_ports) ? device.open_ports.length : 0}</td>
+		<td>${device.last_seen ? new Date(device.last_seen).toLocaleString() : "-"}</td>
+		<td><!-- Actions --></td>
+	`;
 		tbody.appendChild(row);
 	});
 }

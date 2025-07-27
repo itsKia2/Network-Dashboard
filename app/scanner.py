@@ -25,6 +25,7 @@ class NetworkScanner:
         self.scan_lock = threading.Lock()
         if MAC_LOOKUP_AVAILABLE:
             self.mac_lookup = MacLookup()
+            self.mac_lookup.update_vendors()
 
     def get_local_network_range(self):
         """Automatically detect local network range"""
