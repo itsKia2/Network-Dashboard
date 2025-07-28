@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS devices (
     first_seen DATETIME DEFAULT CURRENT_TIMESTAMP, -- remove
     last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
     is_active BOOLEAN DEFAULT 1,
+    method VARCHAR(20),  -- ARP, ping, etc.
     open_ports TEXT  -- JSON string of open ports
 );
 

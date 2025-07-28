@@ -26,7 +26,7 @@ class Device:
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT id, ip_address, mac_address, hostname, vendor, device_type, first_seen, last_seen, is_active, open_ports
+            SELECT id, ip_address, mac_address, hostname, vendor, device_type, first_seen, last_seen, is_active, open_ports, method
             FROM devices
             ORDER BY last_seen DESC
         """)
@@ -43,6 +43,9 @@ class Device:
                     device['open_ports'] = []
             else:
                 device['open_ports'] = []
+            # method may be None if not set
+            if 'method' not in device:
+                device['method'] = None
 
         return devices
 
@@ -79,6 +82,8 @@ class Device:
         cursor.execute("SELECT id, first_seen FROM devices WHERE mac_address = ?", (device_data.get('mac_address'),))
         existing = cursor.fetchone()
 
+        method = device_data.get('method')
+
         if existing:
             # Update existing device, preserve first_seen
             cursor.execute("""
@@ -89,7 +94,8 @@ class Device:
                     device_type = ?,
                     last_seen = CURRENT_TIMESTAMP,
                     is_active = 1,
-                    open_ports = ?
+                    open_ports = ?,
+                    method = ?
                 WHERE mac_address = ?
             """, (
                 device_data.get('ip_address'),
@@ -97,6 +103,7 @@ class Device:
                 device_data.get('vendor'),
                 device_data.get('device_type', 'Unknown'),
                 device_data.get('open_ports', '[]'),
+                method,
                 device_data.get('mac_address')
             ))
             device_id = existing[0]
@@ -105,15 +112,16 @@ class Device:
             cursor.execute("""
                 INSERT INTO devices (
                     ip_address, mac_address, hostname, vendor,
-                    device_type, open_ports, first_seen, last_seen
-                ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    device_type, open_ports, first_seen, last_seen, method
+                ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)
             """, (
                 device_data.get('ip_address'),
                 device_data.get('mac_address'),
                 device_data.get('hostname'),
                 device_data.get('vendor'),
                 device_data.get('device_type', 'Unknown'),
-                device_data.get('open_ports', '[]')
+                device_data.get('open_ports', '[]'),
+                method
             ))
             device_id = cursor.lastrowid
 
