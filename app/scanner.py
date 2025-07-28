@@ -239,22 +239,33 @@ class NetworkScanner:
             return 'Unknown'
 
         vendor = self._get_vendor(mac)
+        hostname = self._get_hostname(ip)
         if not vendor:
             return 'Unknown'
 
-        vendor_lower = vendor.lower()
+        # convert to lower to ensure no errors
+        vendor = vendor.lower()
+        hostname = hostname.lower()
 
         # Router/Gateway detection
-        if any(term in vendor_lower for term in ['cisco', 'netgear', 'linksys', 'asus', 'tp-link', 'dlink']):
+        if any(term in vendor for term in ['cisco', 'netgear', 'linksys', 'asus', 'tp-link', 'dlink', 'askey']):
+            return 'Router/Gateway'
+        if any(term in hostname for term in ['cisco', 'netgear', 'linksys', 'asus', 'tp-link', 'dlink', 'askey']):
             return 'Router/Gateway'
         # Mobile devices
-        if any(term in vendor_lower for term in ['apple', 'samsung', 'lg electronics', 'htc', 'pixel']):
+        if any(term in vendor for term in ['apple', 'samsung', 'lg electronics', 'htc', 'pixel']):
+            return 'Mobile Device'
+        if any(term in hostname for term in ['pixel', 'samsung', 'apple', 'iphone', 'htc']):
             return 'Mobile Device'
         # Computers
-        if any(term in vendor_lower for term in ['dell', 'hp', 'lenovo', 'intel', 'asus', 'framework']):
+        if any(term in vendor for term in ['dell', 'hp', 'lenovo', 'intel', 'asus', 'framework']):
+            return 'Computer'
+        if any(term in hostname for term in ['dell', 'hp', 'lenovo', 'intel', 'asus', 'framework']):
             return 'Computer'
         # IoT devices
-        if any(term in vendor_lower for term in ['amazon', 'google', 'nest', 'philips', 'sonos']):
+        if any(term in vendor for term in ['amazon', 'google', 'nest', 'philips', 'sonos', 'roku', 'tv', 'tcl']):
+            return 'IoT Device'
+        if any(term in hostname for term in ['amazon', 'google', 'nest', 'philips', 'sonos', 'roku', 'tv', 'tcl']):
             return 'IoT Device'
         return 'Unknown'
 

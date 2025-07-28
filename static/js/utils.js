@@ -180,13 +180,13 @@ function isValidMAC(mac) {
  */
 function getDeviceTypeColor(deviceType) {
 	const colorMap = {
-		Computer: "#007bff",
+		"Computer": "#007bff",
 		"Mobile Device": "#28a745",
 		"Router/Gateway": "#ffc107",
 		"IoT Device": "#17a2b8",
-		Printer: "#6f42c1",
-		Server: "#fd7e14",
-		Unknown: "#6c757d",
+		"Printer": "#6f42c1",
+		"Server": "#fd7e14",
+		"Unknown": "#6c757d",
 	};
 
 	return colorMap[deviceType] || colorMap["Unknown"];

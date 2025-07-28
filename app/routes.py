@@ -198,7 +198,7 @@ def auto_scan():
             print("Starting automatic network scan...")
             perform_network_scan()
 
-# Start auto-scan thread when module loads
+# Start auto-scan thread when module loads (global)
 auto_scan_thread = threading.Thread(target=auto_scan)
 auto_scan_thread.daemon = True
 auto_scan_thread.start()
