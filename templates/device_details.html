@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Device Details</h2>
+<table class="table table-bordered">
+  <tbody>
+    <tr><th>IP Address</th><td>{{ device.ip_address }}</td></tr>
+    <tr><th>MAC Address</th><td>{{ device.mac_address }}</td></tr>
+    <tr><th>Hostname</th><td>{{ device.hostname }}</td></tr>
+    <tr><th>Vendor</th><td>{{ device.vendor }}</td></tr>
+    <tr><th>Device Type</th><td>{{ device.device_type }}</td></tr>
+    <tr><th>Last Seen</th><td>{{ device.last_seen }}</td></tr>
+    <tr><th>Open Ports</th><td>{% if device.open_ports %}{{ device.open_ports|join(', ') }}{% else %}None{% endif %}</td></tr>
+    <tr><th>Scan Method</th><td>{{ device.method }}</td></tr>
+  </tbody>
+</table>
+<a href="/devices" class="btn btn-secondary">Back to Devices</a>
+{% endblock %}

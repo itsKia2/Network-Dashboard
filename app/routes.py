@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, jsonify, request
+from flask import Blueprint, render_template, jsonify, request, abort
 from flask_socketio import emit
 from app import socketio
 from app.models import Device, NetworkScan, Stats
@@ -22,6 +22,17 @@ def dashboard():
 def devices_page():
     """Devices list page"""
     return render_template('devices.html')
+
+# Device details page
+@main.route('/device/<mac_address>')
+def device_details(mac_address):
+    from app.models import Device
+    # Find device by MAC address (case-insensitive)
+    devices = Device.get_all()
+    device = next((d for d in devices if d.get('mac_address', '').lower() == mac_address.lower()), None)
+    if not device:
+        abort(404)
+    return render_template('device_details.html', device=device)
 
 @main.route('/api/devices')
 def get_devices():

@@ -25,6 +25,39 @@ class NetworkScanner:
         if MAC_LOOKUP_AVAILABLE:
             self.mac_lookup = MacLookup()
             self.mac_lookup.update_vendors()
+        # Detect local IP and MAC for exclusion
+        self.local_ip = self._get_local_ip()
+        self.local_mac = self._get_local_mac(self.local_ip)
+
+    def _get_local_ip(self):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+            return local_ip
+        except:
+            return None
+
+    def _get_local_mac(self, ip):
+        if not ip:
+            return None
+        try:
+            import platform
+            system = platform.system().lower()
+            if system == 'windows':
+                result = subprocess.run(['arp', '-a', ip], capture_output=True, text=True, timeout=5)
+                match = re.search(r'([a-fA-F0-9-]{17})', result.stdout)
+                if match:
+                    return match.group(1).replace('-', ':')
+            else:
+                result = subprocess.run(['arp', '-n', ip], capture_output=True, text=True, timeout=5)
+                match = re.search(r'([a-fA-F0-9:]{17})', result.stdout)
+                if match:
+                    return match.group(1)
+        except:
+            pass
+        return None
 
     def get_local_network_range(self):
         """Automatically detect local network range"""
@@ -58,21 +91,21 @@ class NetworkScanner:
             # Parse ARP entries
             for line in result.stdout.split('\n'):
                 if system == 'windows':
-                    # Windows format: 192.168.1.1    00-11-22-33-44-55    dynamic
                     match = re.search(r'(\d+\.\d+\.\d+\.\d+)\s+([a-fA-F0-9-]{17})', line)
                     if match:
                         ip, mac = match.groups()
-                        mac = mac.replace('-', ':')  # Convert to standard format
+                        mac = mac.replace('-', ':')
                 else:
-                    # Linux/Mac format: hostname (192.168.1.1) at 00:11:22:33:44:55
                     match = re.search(r'\((\d+\.\d+\.\d+\.\d+)\) at ([a-fA-F0-9:]{17})', line)
                     if match:
                         ip, mac = match.groups()
 
                 if match and self._is_valid_ip(ip):
-                    device_info = self._get_device_info(ip, mac)
+                    # Exclude local device
+                    if ip == self.local_ip or (self.local_mac and mac and mac.lower() == self.local_mac.lower()):
+                        continue
+                    device_info = self._get_device_info(ip, mac, method='ARP')
                     if device_info:
-                        device_info['method'] = 'ARP'
                         devices.append(device_info)
 
         except subprocess.TimeoutExpired:
@@ -95,7 +128,10 @@ class NetworkScanner:
                 import platform
                 system = platform.system().lower()
 
-                # different commands for windows/linux(mac)
+                # Exclude local device
+                if str(ip) == self.local_ip:
+                    return
+
                 if system == 'windows':
                     cmd = ['ping', '-n', '1', '-w', '1000', str(ip)]
                 else:
@@ -105,38 +141,38 @@ class NetworkScanner:
 
                 if result.returncode == 0:
                     with self.scan_lock:
-                        device_info = {
-                            'ip': str(ip),
-                            'mac': None,
-                            'hostname': self._get_hostname(str(ip)),
-                            'vendor': None,
-                            'device_type': 'Unknown',
-                            'last_seen': datetime.now(),
-                            'method': 'ping',
-                            'open_ports': []
-                        }
-                        active_devices.append(device_info)
+                        device_info = self._get_device_info(str(ip), None, method='ping')
+                        if device_info:
+                            active_devices.append(device_info)
 
             except Exception as e:
                 pass  # Ignore ping failures
 
-        # Create threads for parallel pinging
         for ip in network_range.hosts():
             thread = threading.Thread(target=ping_host, args=(ip,))
             threads.append(thread)
             thread.start()
 
-            # Limit concurrent threads
             if len(threads) >= 50:
                 for t in threads:
                     t.join()
                 threads = []
 
-        # Wait for remaining threads
         for thread in threads:
             thread.join()
 
-        return active_devices
+        # Exclude local device by MAC if possible
+        filtered_devices = []
+        for device in active_devices:
+            if not device:
+                continue
+            if device['ip'] == self.local_ip:
+                continue
+            if self.local_mac and device.get('mac') and device['mac'].lower() == self.local_mac.lower():
+                continue
+            filtered_devices.append(device)
+
+        return filtered_devices
 
     def port_scan(self, ip, ports=None):
         """Scan common ports on a device"""
@@ -158,7 +194,7 @@ class NetworkScanner:
 
         return open_ports
 
-    def _get_device_info(self, ip, mac):
+    def _get_device_info(self, ip, mac, method=None):
         """Gather additional device information"""
         try:
             info = {
@@ -168,7 +204,8 @@ class NetworkScanner:
                 'vendor': self._get_vendor(mac),
                 'device_type': self._classify_device(mac, ip),
                 'last_seen': datetime.now(),
-                'open_ports': []
+                'open_ports': [],
+                'method': method or 'unknown'
             }
 
             # Get open ports
@@ -257,17 +294,25 @@ class NetworkScanner:
         # Enhance devices found via ping with ARP info
         for device in all_devices:
             if device['mac'] is None and device['method'] == 'ping':
-                # Try to get MAC from ARP after ping
                 mac = self._get_mac_from_arp(device['ip'])
                 if mac != None:
                     device['mac'] = mac
                     device['vendor'] = self._get_vendor(mac)
                     device['device_type'] = self._classify_device(mac, device['ip'])
 
-        scan_duration = time.time() - start_time
-        print(f"Scan completed in {scan_duration:.2f} seconds. Found {len(all_devices)} devices.")
+        # Final filter: exclude local device by IP or MAC
+        filtered_devices = []
+        for device in all_devices:
+            if device['ip'] == self.local_ip:
+                continue
+            if self.local_mac and device.get('mac') and device['mac'].lower() == self.local_mac.lower():
+                continue
+            filtered_devices.append(device)
 
-        return all_devices, scan_duration
+        scan_duration = time.time() - start_time
+        print(f"Scan completed in {scan_duration:.2f} seconds. Found {len(filtered_devices)} devices.")
+
+        return filtered_devices, scan_duration
 
     def _get_mac_from_arp(self, ip):
         """Get MAC address from ARP table for specific IP"""
