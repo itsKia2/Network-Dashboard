@@ -25,9 +25,24 @@ class NetworkScanner:
         if MAC_LOOKUP_AVAILABLE:
             self.mac_lookup = MacLookup()
             self.mac_lookup.update_vendors()
-        # Detect local IP and MAC for exclusion
+        # Detect local IP and MAC for possible inclusion
         self.local_ip = self._get_local_ip()
         self.local_mac = self._get_local_mac(self.local_ip)
+        # Fallback: get MAC from local interfaces if not found
+        if not self.local_mac:
+            try:
+                import netifaces
+                for iface in netifaces.interfaces():
+                    addrs = netifaces.ifaddresses(iface)
+                    if netifaces.AF_INET in addrs:
+                        for addr in addrs[netifaces.AF_INET]:
+                            if addr.get('addr') == self.local_ip:
+                                mac = addrs.get(netifaces.AF_LINK, [{}])[0].get('addr')
+                                if mac:
+                                    self.local_mac = mac
+                                    break
+            except ImportError:
+                print("Warning: netifaces not installed. Local MAC fallback unavailable.")
 
     def _get_local_ip(self):
         try:
@@ -101,9 +116,6 @@ class NetworkScanner:
                         ip, mac = match.groups()
 
                 if match and self._is_valid_ip(ip):
-                    # Exclude local device
-                    if ip == self.local_ip or (self.local_mac and mac and mac.lower() == self.local_mac.lower()):
-                        continue
                     device_info = self._get_device_info(ip, mac, method='ARP')
                     if device_info:
                         devices.append(device_info)
@@ -127,10 +139,6 @@ class NetworkScanner:
             try:
                 import platform
                 system = platform.system().lower()
-
-                # Exclude local device
-                if str(ip) == self.local_ip:
-                    return
 
                 if system == 'windows':
                     cmd = ['ping', '-n', '1', '-w', '1000', str(ip)]
@@ -161,17 +169,7 @@ class NetworkScanner:
         for thread in threads:
             thread.join()
 
-        # Exclude local device by MAC if possible
-        filtered_devices = []
-        for device in active_devices:
-            if not device:
-                continue
-            if device['ip'] == self.local_ip:
-                continue
-            if self.local_mac and device.get('mac') and device['mac'].lower() == self.local_mac.lower():
-                continue
-            filtered_devices.append(device)
-
+        filtered_devices = [d for d in active_devices if d]
         return filtered_devices
 
     def port_scan(self, ip, ports=None):
@@ -311,19 +309,36 @@ class NetworkScanner:
                     device['vendor'] = self._get_vendor(mac)
                     device['device_type'] = self._classify_device(mac, device['ip'])
 
-        # Final filter: exclude local device by IP or MAC
-        filtered_devices = []
-        for device in all_devices:
-            if device['ip'] == self.local_ip:
-                continue
-            if self.local_mac and device.get('mac') and device['mac'].lower() == self.local_mac.lower():
-                continue
-            filtered_devices.append(device)
+        # Remove any local device entries without a MAC (from ping/ARP)
+        all_devices = [d for d in all_devices if not (d['ip'] == self.local_ip and not d.get('mac'))]
+
+        # If local device is not in the list, add it manually
+        local_present = any(d['ip'] == self.local_ip and d.get('mac') == self.local_mac for d in all_devices)
+        if self.local_ip and self.local_mac and not local_present:
+            local_info = self._get_device_info(self.local_ip, self.local_mac, method='local')
+            if local_info:
+                all_devices.append(local_info)
+
+        # Ensure local device is saved to the database with all info, and remove any DB rows for local_ip with no MAC
+        if self.local_ip and self.local_mac:
+            from app.models import Device, DatabaseManager
+            # Remove DB rows for local_ip with no MAC
+            conn = DatabaseManager.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM devices WHERE ip_address = ? AND (mac_address IS NULL OR mac_address = '')", (self.local_ip,))
+            conn.commit()
+            conn.close()
+            local_info = self._get_device_info(self.local_ip, self.local_mac, method='local')
+            if local_info:
+                local_info['ip_address'] = local_info['ip']
+                local_info['mac_address'] = local_info['mac']
+                local_info['is_active'] = 1
+                Device.upsert(local_info)
 
         scan_duration = time.time() - start_time
-        print(f"Scan completed in {scan_duration:.2f} seconds. Found {len(filtered_devices)} devices.")
+        print(f"Scan completed in {scan_duration:.2f} seconds. Found {len(all_devices)} devices.")
 
-        return filtered_devices, scan_duration
+        return all_devices, scan_duration
 
     def _get_mac_from_arp(self, ip):
         """Get MAC address from ARP table for specific IP"""

@@ -5,24 +5,24 @@ let currentTypeFilter = 'all';
 let currentSearch = '';
 
 function filterDevices(devices, status, type, search) {
-  return devices.filter(device => {
-	// Status filter
-	if (status === 'active' && !device.is_active) return false;
-	if (status === 'inactive' && device.is_active) return false;
-	// Type filter
-	if (type !== 'all' && device.device_type !== type) return false;
-	// Search filter (case-insensitive, matches hostname, IP, MAC, vendor)
-	if (search) {
-	  const s = search.toLowerCase();
-	  if (!(
-		(device.hostname && device.hostname.toLowerCase().includes(s)) ||
-		(device.ip_address && device.ip_address.toLowerCase().includes(s)) ||
-		(device.mac_address && device.mac_address.toLowerCase().includes(s)) ||
-		(device.vendor && device.vendor.toLowerCase().includes(s))
-	  )) return false;
-	}
-	return true;
-  });
+	return devices.filter(device => {
+		// Status filter
+		if (status === 'active' && !device.is_active) return false;
+		if (status === 'inactive' && device.is_active) return false;
+		// Type filter
+		if (type !== 'all' && device.device_type !== type) return false;
+		// Search filter (case-insensitive, matches hostname, IP, MAC, vendor)
+		if (search) {
+			const s = search.toLowerCase();
+			if (!(
+				(device.hostname && device.hostname.toLowerCase().includes(s)) ||
+				(device.ip_address && device.ip_address.toLowerCase().includes(s)) ||
+				(device.mac_address && device.mac_address.toLowerCase().includes(s)) ||
+				(device.vendor && device.vendor.toLowerCase().includes(s))
+			)) return false;
+		}
+		return true;
+	});
 }
 
 function applyFiltersAndRender() {
@@ -113,17 +113,17 @@ function updateDevicesTable(devices) {
 	devices.forEach(device => {
 		const row = document.createElement("tr");
 		const detailsUrl = device.mac_address ? `/device/${encodeURIComponent(device.mac_address)}` : '#';
-	row.innerHTML = `
-		<td>${device.is_active ? '<span class="active-dot"></span> Active' : '<span class="inactive-dot"></span> Inactive'}</td>
-		<td>${device.hostname || device.ip_address || "Unknown"}</td>
-		<td>${device.ip_address || "-"}</td>
-		<td>${device.mac_address || "-"}</td>
-		<td>${device.vendor || "-"}</td>
-		<td>${device.device_type || "-"}</td>
-		<td>${Array.isArray(device.open_ports) ? device.open_ports.length : 0}</td>
-		<td>${device.last_seen ? new Date(device.last_seen).toLocaleString() : "-"}</td>
-		<td><a href="${detailsUrl}" class="btn btn-sm btn-info">Details</a></td>
-	`;
+		row.innerHTML = `
+			<td>${device.is_active ? '<span class="active-dot"></span> Active' : '<span class="inactive-dot"></span> Inactive'}</td>
+			<td>${device.hostname || device.ip_address || "Unknown"}</td>
+			<td>${device.ip_address || "-"}</td>
+			<td>${device.mac_address || "-"}</td>
+			<td>${device.vendor || "-"}</td>
+			<td>${device.device_type || "-"}</td>
+			<td>${Array.isArray(device.open_ports) ? device.open_ports.length : 0}</td>
+			<td>${device.last_seen ? new Date(device.last_seen).toLocaleString() : "-"}</td>
+			<td><a href="${detailsUrl}" class="btn btn-sm btn-info">Details</a></td>
+		`;
 		tbody.appendChild(row);
 	});
 }

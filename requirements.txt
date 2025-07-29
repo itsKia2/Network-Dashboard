@@ -5,3 +5,6 @@ python-nmap==0.7.1
 schedule==1.2.0
 flask-socketio==5.3.6
 eventlet==0.40.2
+pywinrm
+paramiko
+netifaces

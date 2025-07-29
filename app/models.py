@@ -3,6 +3,8 @@ import json
 from datetime import datetime, timedelta
 from flask import current_app
 
+# this file deals with database operations and models
+
 class DatabaseManager:
     @staticmethod
     def get_connection():
