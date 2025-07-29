@@ -34,6 +34,71 @@ def device_details(mac_address):
         abort(404)
     return render_template('device_details.html', device=device)
 
+# --- SocketIO handler for real-time command execution ---
+@socketio.on('run_command')
+def handle_run_command(data):
+    print(f"[DEBUG] Received run_command: {data}")
+    ip = data.get('ip')
+    username = data.get('username')
+    password = data.get('password')
+    command = data.get('command')
+    os_type = data.get('os', '').lower()
+
+    if not all([ip, username, password, command]):
+        print(f"[DEBUG] Missing required fields: ip={ip}, username={username}, password={'***' if password else None}, command={command}")
+        emit('command_error', {'error': 'Missing required fields'})
+        return
+
+    print(f"[DEBUG] Attempting to run command '{command}' on {ip} as {username} (os_type={os_type})")
+
+    if os_type == 'windows':
+        # Windows via WinRM
+        try:
+            import winrm
+            print(f"[DEBUG] Connecting to WinRM at {ip}")
+            session = winrm.Session(f'http://{ip}:5985/wsman', auth=(username, password))
+            r = session.run_cmd(command)
+            print(f"[DEBUG] WinRM status_code: {r.status_code}")
+            print(f"[DEBUG] WinRM stdout: {r.std_out}")
+            print(f"[DEBUG] WinRM stderr: {r.std_err}")
+            if r.status_code == 0:
+                output = r.std_out.decode()
+                print(f"[COMMAND OUTPUT] {output}")
+                emit('command_output', {'output': output})
+            else:
+                error = r.std_err.decode()
+                print(f"[COMMAND ERROR] {error}")
+                emit('command_error', {'error': error})
+        except Exception as e:
+            print(f"[DEBUG] WinRM Exception: {e}")
+            emit('command_error', {'error': str(e)})
+        emit('command_done', {})
+    else:
+        # Linux via SSH (paramiko)
+        try:
+            import paramiko
+            print(f"[DEBUG] Connecting to SSH at {ip}")
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(ip, username=username, password=password, timeout=10)
+            print(f"[DEBUG] Connected. Executing command: {command}")
+            stdin, stdout, stderr = ssh.exec_command(command)
+            # Stream output in real time
+            for line in iter(stdout.readline, ""):
+                if not line:
+                    break
+                print(f"[COMMAND OUTPUT] {line.rstrip()}")
+                emit('command_output', {'output': line}, namespace='/')
+            err = stderr.read().decode()
+            if err:
+                print(f"[COMMAND ERROR] {err}")
+                emit('command_error', {'error': err})
+            ssh.close()
+        except Exception as e:
+            print(f"[DEBUG] SSH Exception: {e}")
+            emit('command_error', {'error': str(e)})
+        emit('command_done', {})
+
 @main.route('/api/devices')
 def get_devices():
     """API endpoint to get all devices"""
