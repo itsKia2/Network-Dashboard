@@ -34,7 +34,7 @@ def device_details(mac_address):
         abort(404)
     return render_template('device_details.html', device=device)
 
-# --- SocketIO handler for real-time command execution ---
+# Sends command through ssh to remote device
 @socketio.on('run_command')
 def handle_run_command(data):
     print(f"[DEBUG] Received run_command: {data}")
@@ -49,18 +49,18 @@ def handle_run_command(data):
         emit('command_error', {'error': 'Missing required fields'})
         return
 
-    print(f"[DEBUG] Attempting to run command '{command}' on {ip} as {username} (os_type={os_type})")
+    print(f"[SSH] Attempting to run command '{command}' on {ip} as {username} (os_type={os_type})")
 
     if os_type == 'windows':
-        # Windows via WinRM
+        # Windows (WinRM) --> TODO requires testing
         try:
             import winrm
-            print(f"[DEBUG] Connecting to WinRM at {ip}")
+            print(f"[SSH] Connecting to WinRM at {ip}")
             session = winrm.Session(f'http://{ip}:5985/wsman', auth=(username, password))
             r = session.run_cmd(command)
-            print(f"[DEBUG] WinRM status_code: {r.status_code}")
-            print(f"[DEBUG] WinRM stdout: {r.std_out}")
-            print(f"[DEBUG] WinRM stderr: {r.std_err}")
+            print(f"[SSH] WinRM status_code: {r.status_code}")
+            print(f"[SSH] WinRM stdout: {r.std_out}")
+            print(f"[SSH] WinRM stderr: {r.std_err}")
             if r.status_code == 0:
                 output = r.std_out.decode()
                 print(f"[COMMAND OUTPUT] {output}")
@@ -70,18 +70,18 @@ def handle_run_command(data):
                 print(f"[COMMAND ERROR] {error}")
                 emit('command_error', {'error': error})
         except Exception as e:
-            print(f"[DEBUG] WinRM Exception: {e}")
+            print(f"[SSH] WinRM Exception: {e}")
             emit('command_error', {'error': str(e)})
         emit('command_done', {})
     else:
-        # Linux via SSH (paramiko)
+        # For linux devices (android not tested yet, but probably works with open port)
         try:
             import paramiko
-            print(f"[DEBUG] Connecting to SSH at {ip}")
+            print(f"[SSH] Connecting to SSH at {ip}")
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             ssh.connect(ip, username=username, password=password, timeout=10)
-            print(f"[DEBUG] Connected. Executing command: {command}")
+            print(f"[SSH] Connected. Executing command: {command}")
             stdin, stdout, stderr = ssh.exec_command(command)
             # Stream output in real time
             for line in iter(stdout.readline, ""):
@@ -95,7 +95,7 @@ def handle_run_command(data):
                 emit('command_error', {'error': err})
             ssh.close()
         except Exception as e:
-            print(f"[DEBUG] SSH Exception: {e}")
+            print(f"[SSH] SSH Exception: {e}")
             emit('command_error', {'error': str(e)})
         emit('command_done', {})
 
