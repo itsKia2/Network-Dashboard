@@ -18,8 +18,15 @@ main = Blueprint('main', __name__)
 
 # --- User authentication setup ---
 import os
+
+# --- Force HTTPS for all requests ---
 @main.before_app_request
-def require_login():
+def enforce_https_and_require_login():
+    # Redirect HTTP to HTTPS
+    if request.headers.get('X-Forwarded-Proto', 'https') != 'https' and not request.is_secure:
+        url = request.url.replace('http://', 'https://', 1)
+        return redirect(url, code=301)
+    # Require login
     allowed_routes = ['main.login', 'main.register', 'static']
     if request.endpoint not in allowed_routes and not session.get('logged_in'):
         return redirect(url_for('main.login'))
