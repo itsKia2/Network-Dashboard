@@ -1,11 +1,18 @@
 from flask import Blueprint, render_template, jsonify, request, abort, redirect, url_for, session, g
 from flask_socketio import emit
+from flask import session as flask_session
 from app import socketio
 from app.models import Device, NetworkScan, Stats, User
 from app.scanner import NetworkScanner
 import threading
 import time
 from datetime import datetime
+import paramiko
+import winrm
+
+# Store active sessions in memory (per user session)
+terminal_sessions = {}
+session_lock = threading.Lock()
 
 main = Blueprint('main', __name__)
 
@@ -106,7 +113,6 @@ def handle_run_command(data):
     if os_type == 'windows':
         # Windows (WinRM) --> TODO requires testing
         try:
-            import winrm
             print(f"[SSH] Connecting to WinRM at {ip}")
             session = winrm.Session(f'http://{ip}:5985/wsman', auth=(username, password))
             r = session.run_cmd(command)
@@ -128,7 +134,6 @@ def handle_run_command(data):
     else:
         # For linux devices (android not tested yet, but probably works with open port)
         try:
-            import paramiko
             print(f"[SSH] Connecting to SSH at {ip}")
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -183,6 +188,89 @@ def get_active_devices():
             'success': False,
             'error': str(e)
         }), 500
+
+
+def get_session_id():
+    # Use Flask session id or username as key
+    return flask_session.get('username') or str(id(flask_session))
+
+@socketio.on('terminal_connect')
+def handle_terminal_connect(data):
+    sid = get_session_id()
+    ip = data.get('ip')
+    username = data.get('username')
+    password = data.get('password')
+    os_type = data.get('os', '').lower()
+    with session_lock:
+        if sid in terminal_sessions:
+            # Clean up any previous session
+            try:
+                s = terminal_sessions[sid]
+                if hasattr(s, 'close'):
+                    s.close()
+            except Exception:
+                pass
+            terminal_sessions.pop(sid, None)
+        try:
+            if os_type == 'windows':
+                session = winrm.Session(f'http://{ip}:5985/wsman', auth=(username, password))
+                # Test connection
+                r = session.run_cmd('echo connected')
+                if r.status_code == 0:
+                    terminal_sessions[sid] = session
+                    emit('terminal_connected', {'output': r.std_out.decode()})
+                else:
+                    emit('terminal_error', {'error': r.std_err.decode()})
+            else:
+                ssh = paramiko.SSHClient()
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh.connect(ip, username=username, password=password, timeout=10)
+                terminal_sessions[sid] = ssh
+                emit('terminal_connected', {'output': '[SSH Connected]\n'})
+        except Exception as e:
+            emit('terminal_error', {'error': str(e)})
+
+@socketio.on('terminal_command')
+def handle_terminal_command(data):
+    sid = get_session_id()
+    command = data.get('command')
+    os_type = data.get('os', '').lower()
+    with session_lock:
+        session_obj = terminal_sessions.get(sid)
+        if not session_obj:
+            emit('terminal_error', {'error': 'No active terminal session'})
+            return
+        try:
+            if os_type == 'windows':
+                r = session_obj.run_cmd(command)
+                if r.status_code == 0:
+                    emit('terminal_output', {'output': r.std_out.decode()})
+                else:
+                    emit('terminal_error', {'error': r.std_err.decode()})
+            else:
+                stdin, stdout, stderr = session_obj.exec_command(command)
+                for line in iter(stdout.readline, ""):
+                    if not line:
+                        break
+                    emit('terminal_output', {'output': line})
+                err = stderr.read().decode()
+                if err:
+                    emit('terminal_error', {'error': err})
+        except Exception as e:
+            emit('terminal_error', {'error': str(e)})
+
+@socketio.on('terminal_disconnect')
+def handle_terminal_disconnect(data):
+    sid = get_session_id()
+    with session_lock:
+        session_obj = terminal_sessions.pop(sid, None)
+        if session_obj:
+            try:
+                if hasattr(session_obj, 'close'):
+                    session_obj.close()
+            except Exception:
+                pass
+    emit('terminal_disconnected', {'output': '[Session closed]'})
 
 @main.route('/api/stats')
 def get_stats():

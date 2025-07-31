@@ -25,13 +25,22 @@
     <label for="cmd-password">Password:</label>
     <input type="password" id="cmd-password" class="form-control" required>
   </div>
-  <div class="form-group">
-    <label for="cmd-command">Command:</label>
-    <input type="text" id="cmd-command" class="form-control" required>
-  </div>
-  <button type="submit" class="btn btn-primary">Run Command</button>
+  <button type="submit" class="btn btn-primary">Connect to Terminal</button>
 </form>
-<pre id="cmd-output" style="background:#222;color:#eee;padding:1em;min-height:4em;"></pre>
+
+<!-- Modal Terminal Popup -->
+<div id="terminal-modal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:#181818;color:#eee;min-width:500px;min-height:350px;max-width:90vw;max-height:90vh;position:relative;box-shadow:0 2px 24px #000;border-radius:8px;display:flex;flex-direction:column;">
+    <button id="close-terminal" style="position:absolute;top:10px;right:16px;background:none;border:none;color:#fff;font-size:1.5em;cursor:pointer;">&times;</button>
+    <div style="padding:1.5em 1.5em 0.5em 1.5em;flex:1;display:flex;flex-direction:column;">
+      <div id="terminal-output" style="background:#222;color:#eee;padding:1em;flex:1;overflow-y:auto;min-height:200px;font-family:monospace;font-size:1em;border-radius:4px;"></div>
+      <form id="terminal-cmd-form" style="display:flex;margin-top:1em;">
+        <input type="text" id="terminal-cmd-input" placeholder="Enter command..." style="flex:1;padding:0.5em;font-size:1em;border-radius:4px 0 0 4px;border:1px solid #444;background:#222;color:#eee;outline:none;">
+        <button type="submit" style="padding:0.5em 1.2em;font-size:1em;border:none;background:#007bff;color:#fff;border-radius:0 4px 4px 0;cursor:pointer;">Send</button>
+      </form>
+    </div>
+  </div>
+</div>
 
 <a href="/devices" class="btn btn-secondary">Back to Devices</a>
 
@@ -39,31 +48,56 @@
 <script>
 const socket = io();
 const form = document.getElementById('command-form');
-const output = document.getElementById('cmd-output');
+const modal = document.getElementById('terminal-modal');
+const closeBtn = document.getElementById('close-terminal');
+const terminalOutput = document.getElementById('terminal-output');
+const terminalCmdForm = document.getElementById('terminal-cmd-form');
+const terminalCmdInput = document.getElementById('terminal-cmd-input');
+let sessionPayload = null;
+
 form.addEventListener('submit', function(e) {
   e.preventDefault();
-  output.textContent = "Connecting and running command...\n";
-  const payload = {
+  // Save credentials for session
+  sessionPayload = {
     ip: "{{ device.ip_address }}",
     username: document.getElementById('cmd-username').value,
     password: document.getElementById('cmd-password').value,
-    command: document.getElementById('cmd-command').value,
     os: "{{ device.device_type|lower }}"
   };
-  console.log('[DEBUG] Emitting run_command:', payload);
-  socket.emit('run_command', payload);
+  terminalOutput.textContent = "Connecting to remote terminal...\n";
+  modal.style.display = 'flex';
+  // Send a special connect event
+  socket.emit('terminal_connect', sessionPayload);
 });
-socket.on('command_output', function(data) {
-  console.log('[DEBUG] Received command_output:', data);
-  output.textContent += data.output;
+
+closeBtn.addEventListener('click', function() {
+  modal.style.display = 'none';
+  terminalOutput.textContent = '';
+  socket.emit('terminal_disconnect', sessionPayload);
 });
-socket.on('command_done', function(data) {
-  console.log('[DEBUG] Received command_done:', data);
-  output.textContent += "\n[Command finished]";
+
+terminalCmdForm.addEventListener('submit', function(e) {
+  e.preventDefault();
+  const cmd = terminalCmdInput.value.trim();
+  if (!cmd) return;
+  terminalOutput.textContent += `\n> ${cmd}\n`;
+  socket.emit('terminal_command', { ...sessionPayload, command: cmd });
+  terminalCmdInput.value = '';
 });
-socket.on('command_error', function(data) {
-  console.log('[DEBUG] Received command_error:', data);
-  output.textContent += "\n[Error] " + data.error;
+
+socket.on('terminal_output', function(data) {
+  terminalOutput.textContent += data.output;
+  terminalOutput.scrollTop = terminalOutput.scrollHeight;
+});
+socket.on('terminal_error', function(data) {
+  terminalOutput.textContent += `\n[Error] ${data.error}`;
+  terminalOutput.scrollTop = terminalOutput.scrollHeight;
+});
+socket.on('terminal_connected', function(data) {
+  terminalOutput.textContent += '\n[Connected to remote terminal]\n';
+});
+socket.on('terminal_disconnected', function(data) {
+  terminalOutput.textContent += '\n[Disconnected from remote terminal]\n';
 });
 </script>
 {% endblock %}
