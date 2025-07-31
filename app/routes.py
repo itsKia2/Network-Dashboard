@@ -1,13 +1,65 @@
-from flask import Blueprint, render_template, jsonify, request, abort
+from flask import Blueprint, render_template, jsonify, request, abort, redirect, url_for, session, g
 from flask_socketio import emit
 from app import socketio
-from app.models import Device, NetworkScan, Stats
+from app.models import Device, NetworkScan, Stats, User
 from app.scanner import NetworkScanner
 import threading
 import time
 from datetime import datetime
 
 main = Blueprint('main', __name__)
+
+# --- User authentication setup ---
+import os
+@main.before_app_request
+def require_login():
+    allowed_routes = ['main.login', 'main.register', 'static']
+    if request.endpoint not in allowed_routes and not session.get('logged_in'):
+        return redirect(url_for('main.login'))
+
+# --- Login/Register routes ---
+@main.route('/login', methods=['GET', 'POST'])
+def login():
+    User.create_table()
+    if not User.user_exists():
+        return redirect(url_for('main.register'))
+    error = None
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        if User.check_user(username, password):
+            session['logged_in'] = True
+            session['username'] = username
+            return redirect(url_for('main.dashboard'))
+        else:
+            error = 'Invalid username or password. Please try again.'
+    return render_template('login.html', error=error, mode='login')
+
+@main.route('/register', methods=['GET', 'POST'])
+def register():
+    User.create_table()
+    if User.user_exists():
+        return redirect(url_for('main.login'))
+    error = None
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        if username and password:
+            try:
+                User.set_user(username, password)
+                session['logged_in'] = True
+                session['username'] = username
+                return redirect(url_for('main.dashboard'))
+            except Exception as e:
+                error = 'Registration failed. Username may already exist.'
+        else:
+            error = 'Please provide both username and password.'
+    return render_template('login.html', error=error, mode='register')
+
+@main.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('main.login'))
 
 # Global scanner instance
 scanner = NetworkScanner()

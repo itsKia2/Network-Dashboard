@@ -1,3 +1,64 @@
+# --- User authentication model ---
+import sqlite3
+import hashlib
+import os
+
+class User:
+    @staticmethod
+    def create_table():
+        from app.models import DatabaseManager
+        conn = DatabaseManager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL
+            )
+        ''')
+        conn.commit()
+        conn.close()
+
+    @staticmethod
+    def set_user(username, password):
+        from app.models import DatabaseManager
+        conn = DatabaseManager.get_connection()
+        cursor = conn.cursor()
+        password_hash = User.hash_password(password)
+        cursor.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', (username, password_hash))
+        conn.commit()
+        conn.close()
+
+    @staticmethod
+    def check_user(username, password):
+        from app.models import DatabaseManager
+        conn = DatabaseManager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT password_hash FROM users WHERE username = ?', (username,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return User.verify_password(password, row[0])
+        return False
+
+    @staticmethod
+    def user_exists():
+        from app.models import DatabaseManager
+        conn = DatabaseManager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM users')
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count > 0
+
+    @staticmethod
+    def hash_password(password):
+        salt = os.environ.get('USER_SALT', 'default_salt')
+        return hashlib.sha256((password + salt).encode()).hexdigest()
+
+    @staticmethod
+    def verify_password(password, hash_):
+        return User.hash_password(password) == hash_
 import sqlite3
 import json
 from datetime import datetime, timedelta
