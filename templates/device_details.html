@@ -33,7 +33,7 @@
   <div style="background:#181818;color:#eee;min-width:500px;min-height:350px;max-width:90vw;max-height:90vh;position:relative;box-shadow:0 2px 24px #000;border-radius:8px;display:flex;flex-direction:column;">
     <button id="close-terminal" style="position:absolute;top:10px;right:16px;background:none;border:none;color:#fff;font-size:1.5em;cursor:pointer;">&times;</button>
     <div style="padding:1.5em 1.5em 0.5em 1.5em;flex:1;display:flex;flex-direction:column;">
-      <div id="terminal-output" style="background:#222;color:#eee;padding:1em;flex:1;overflow-y:auto;min-height:200px;font-family:monospace;font-size:1em;border-radius:4px;"></div>
+      <div id="terminal-output" style="background:#222;color:#eee;padding:1em;flex:1;overflow-y:scroll;min-height:200px;max-height:60vh;font-family:monospace;font-size:1em;border-radius:4px;"></div>
       <form id="terminal-cmd-form" style="display:flex;margin-top:1em;">
         <input type="text" id="terminal-cmd-input" placeholder="Enter command..." style="flex:1;padding:0.5em;font-size:1em;border-radius:4px 0 0 4px;border:1px solid #444;background:#222;color:#eee;outline:none;">
         <button type="submit" style="padding:0.5em 1.2em;font-size:1em;border:none;background:#007bff;color:#fff;border-radius:0 4px 4px 0;cursor:pointer;">Send</button>
@@ -85,19 +85,32 @@ terminalCmdForm.addEventListener('submit', function(e) {
   terminalCmdInput.value = '';
 });
 
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+function appendTerminalOutput(text) {
+  // Replace newlines with <br> and preserve spaces
+  const html = escapeHtml(text).replace(/\n/g, '<br>').replace(/  /g, ' &nbsp;');
+  const isAtBottom = Math.abs(terminalOutput.scrollHeight - terminalOutput.scrollTop - terminalOutput.clientHeight) < 5;
+  terminalOutput.innerHTML += html;
+  // Only auto-scroll if user was already at the bottom
+  if (isAtBottom) {
+    terminalOutput.scrollTop = terminalOutput.scrollHeight;
+  }
+}
 socket.on('terminal_output', function(data) {
-  terminalOutput.textContent += data.output;
-  terminalOutput.scrollTop = terminalOutput.scrollHeight;
+  appendTerminalOutput(data.output);
 });
 socket.on('terminal_error', function(data) {
-  terminalOutput.textContent += `\n[Error] ${data.error}`;
-  terminalOutput.scrollTop = terminalOutput.scrollHeight;
+  appendTerminalOutput(`\n[Error] ${data.error}`);
 });
 socket.on('terminal_connected', function(data) {
-  terminalOutput.textContent += '\n[Connected to remote terminal]\n';
+  appendTerminalOutput('\n[Connected to remote terminal]\n');
 });
 socket.on('terminal_disconnected', function(data) {
-  terminalOutput.textContent += '\n[Disconnected from remote terminal]\n';
+  appendTerminalOutput('\n[Disconnected from remote terminal]\n');
 });
 </script>
 {% endblock %}
