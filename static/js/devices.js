@@ -1,54 +1,63 @@
 // --- Search and Filter Logic ---
 let allDevices = [];
-let currentStatusFilter = 'all';
-let currentTypeFilter = 'all';
-let currentSearch = '';
+let currentStatusFilter = "all";
+let currentTypeFilter = "all";
+let currentSearch = "";
 
 function filterDevices(devices, status, type, search) {
-	return devices.filter(device => {
+	return devices.filter((device) => {
 		// Status filter
-		if (status === 'active' && !device.is_active) return false;
-		if (status === 'inactive' && device.is_active) return false;
+		if (status === "active" && !device.is_active) return false;
+		if (status === "inactive" && device.is_active) return false;
 		// Type filter
-		if (type !== 'all' && device.device_type !== type) return false;
+		if (type !== "all" && device.device_type !== type) return false;
 		// Search filter (case-insensitive, matches hostname, IP, MAC, vendor)
 		if (search) {
 			const s = search.toLowerCase();
-			if (!(
-				(device.hostname && device.hostname.toLowerCase().includes(s)) ||
-				(device.ip_address && device.ip_address.toLowerCase().includes(s)) ||
-				(device.mac_address && device.mac_address.toLowerCase().includes(s)) ||
-				(device.vendor && device.vendor.toLowerCase().includes(s))
-			)) return false;
+			if (
+				!(
+					(device.hostname && device.hostname.toLowerCase().includes(s)) ||
+					(device.ip_address && device.ip_address.toLowerCase().includes(s)) ||
+					(device.mac_address &&
+						device.mac_address.toLowerCase().includes(s)) ||
+					(device.vendor && device.vendor.toLowerCase().includes(s))
+				)
+			)
+				return false;
 		}
 		return true;
 	});
 }
 
 function applyFiltersAndRender() {
-	const filtered = filterDevices(allDevices, currentStatusFilter, currentTypeFilter, currentSearch);
+	const filtered = filterDevices(
+		allDevices,
+		currentStatusFilter,
+		currentTypeFilter,
+		currentSearch,
+	);
 	updateDevicesTable(filtered);
 }
 
 function setupFilterUI() {
-	const statusSelect = document.getElementById('device-filter');
-	const typeSelect = document.getElementById('type-filter');
-	const searchInput = document.getElementById('search-input');
+	const statusSelect = document.getElementById("device-filter");
+	const typeSelect = document.getElementById("type-filter");
+	const searchInput = document.getElementById("search-input");
 
 	if (statusSelect) {
-		statusSelect.addEventListener('change', e => {
+		statusSelect.addEventListener("change", (e) => {
 			currentStatusFilter = e.target.value;
 			applyFiltersAndRender();
 		});
 	}
 	if (typeSelect) {
-		typeSelect.addEventListener('change', e => {
+		typeSelect.addEventListener("change", (e) => {
 			currentTypeFilter = e.target.value;
 			applyFiltersAndRender();
 		});
 	}
 	if (searchInput) {
-		searchInput.addEventListener('input', e => {
+		searchInput.addEventListener("input", (e) => {
 			currentSearch = e.target.value;
 			applyFiltersAndRender();
 		});
@@ -78,7 +87,7 @@ async function loadDevicesData() {
 	try {
 		const [devicesRes, statsRes] = await Promise.all([
 			fetch("/api/devices"),
-			fetch("/api/stats")
+			fetch("/api/stats"),
 		]);
 		const devicesData = await devicesRes.json();
 		const statsData = await statsRes.json();
@@ -94,12 +103,18 @@ async function loadDevicesData() {
 				noDevices.style.display = "block";
 			}
 		} else {
-			if (tbody) tbody.innerHTML = "<tr><td colspan='11'>Error loading devices: " + (devicesData.error || "Unknown error") + "</td></tr>";
+			if (tbody)
+				tbody.innerHTML =
+					"<tr><td colspan='11'>Error loading devices: " +
+					(devicesData.error || "Unknown error") +
+					"</td></tr>";
 			if (noDevices) noDevices.style.display = "block";
 		}
 	} catch (error) {
 		console.error("Error loading devices data:", error);
-		if (tbody) tbody.innerHTML = "<tr><td colspan='11'>Error loading devices: " + error + "</td></tr>";
+		if (tbody)
+			tbody.innerHTML =
+				"<tr><td colspan='11'>Error loading devices: " + error + "</td></tr>";
 		if (noDevices) noDevices.style.display = "block";
 	} finally {
 		if (spinner) spinner.style.display = "none";
@@ -110,9 +125,11 @@ function updateDevicesTable(devices) {
 	const tbody = document.getElementById("devices-table-body");
 	if (!tbody) return;
 	tbody.innerHTML = "";
-	devices.forEach(device => {
+	devices.forEach((device) => {
 		const row = document.createElement("tr");
-		const detailsUrl = device.mac_address ? `/device/${encodeURIComponent(device.mac_address)}` : '#';
+		const detailsUrl = device.mac_address
+			? `/device/${encodeURIComponent(device.mac_address)}`
+			: "#";
 		row.innerHTML = `
 			<td>${device.is_active ? '<span class="active-dot"></span> Active' : '<span class="inactive-dot"></span> Inactive'}</td>
 			<td>${device.hostname || device.ip_address || "Unknown"}</td>
@@ -122,7 +139,7 @@ function updateDevicesTable(devices) {
 			<td>${device.device_type || "-"}</td>
 			<td>${Array.isArray(device.open_ports) ? device.open_ports.length : 0}</td>
 			<td>${device.last_seen ? new Date(device.last_seen).toLocaleString() : "-"}</td>
-			<td><a href="${detailsUrl}" class="btn btn-sm btn-info">Details</a></td>
+			<td><a href="${detailsUrl}" class="btn btn-sm btn-info">Connect</a></td>
 		`;
 		tbody.appendChild(row);
 	});
@@ -137,7 +154,7 @@ function updateDeviceSummary(stats) {
 function setupSocketListeners() {
 	if (typeof io === "undefined") return;
 	const socket = io();
-	socket.on("device_update", data => {
+	socket.on("device_update", (data) => {
 		if (data.devices) updateDevicesTable(data.devices);
 		if (data.stats) updateDeviceSummary(data.stats);
 	});
