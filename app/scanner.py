@@ -245,6 +245,10 @@ class NetworkScanner:
         vendor = vendor.lower()
         hostname = hostname.lower()
 
+        # check for local IP and MAC
+        if ip == self.local_ip and mac == self.local_mac:
+            return 'This Device'
+
         # Router/Gateway detection
         if any(term in vendor for term in ['cisco', 'netgear', 'linksys', 'asus', 'tp-link', 'dlink', 'askey']):
             return 'Router/Gateway'
