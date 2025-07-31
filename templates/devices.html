@@ -4,41 +4,52 @@ endblock %} {% block content %}
   <div class="page-header">
     <h2><span class="icon">🖧</span> Network Devices</h2>
     <div class="header-controls">
-      <div class="filter-controls">
-        <select id="device-filter" class="filter-select">
-          <option value="all">All Devices</option>
-          <option value="active">Active Only</option>
-          <option value="inactive">Inactive Only</option>
-        </select>
-        <select id="type-filter" class="filter-select">
-          <option value="all">All Types</option>
-          <option value="Computer">Computers</option>
-          <option value="Mobile Device">Mobile Devices</option>
-          <option value="Router/Gateway">Routers</option>
-          <option value="IoT Device">IoT Devices</option>
-          <option value="Unknown">Unknown</option>
-        </select>
-        <input
-          type="text"
-          id="search-input"
-          placeholder="Search devices..."
-          class="search-input"
-        />
+
+      <div class="filter-controls enhanced-filters">
+        <div class="filter-group">
+          <label for="device-filter" class="filter-label">Status</label>
+          <select id="device-filter" class="filter-select">
+            <option value="all">All Devices</option>
+            <option value="active">Active Only</option>
+            <option value="inactive">Inactive Only</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="type-filter" class="filter-label">Type</label>
+          <select id="type-filter" class="filter-select">
+            <option value="all">All Types</option>
+            <option value="Computer">Computers</option>
+            <option value="Mobile Device">Mobile Devices</option>
+            <option value="Router/Gateway">Routers</option>
+            <option value="IoT Device">IoT Devices</option>
+            <option value="Unknown">Unknown</option>
+          </select>
+        </div>
+        <div class="filter-group search-group">
+          <label for="search-input" class="filter-label">Search</label>
+          <input
+            type="text"
+            id="search-input"
+            placeholder="Search devices..."
+            class="search-input"
+          />
+        </div>
+        <button id="refresh-btn" class="refresh-btn">Refresh</button>
       </div>
-      <button id="refresh-btn" class="refresh-btn">🔄 Refresh</button>
     </div>
   </div>
 
-  <div class="devices-summary-cards">
-    <div class="summary-card">
+
+  <div class="devices-summary-cards enhanced-summary-cards">
+    <div class="summary-card total">
       <div class="summary-title">Total Devices</div>
       <div class="summary-value" id="total-count">0</div>
     </div>
-    <div class="summary-card">
+    <div class="summary-card active">
       <div class="summary-title">Active Devices</div>
       <div class="summary-value" id="active-count">0</div>
     </div>
-    <div class="summary-card">
+    <div class="summary-card filtered">
       <div class="summary-title">Filtered</div>
       <div class="summary-value" id="filtered-count">0</div>
     </div>
@@ -88,6 +99,93 @@ endblock %} {% block content %}
     </div>
   </div>
 </div>
-{% endblock %} {% block scripts %}
+<style>
+  .enhanced-filters {
+    display: flex;
+    gap: 1.5em;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    margin-bottom: 0.5em;
+  }
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    min-width: 140px;
+  }
+  .filter-label {
+    font-size: 0.95em;
+    color: #444;
+    margin-bottom: 0.2em;
+    font-weight: 500;
+  }
+  .search-group {
+    min-width: 200px;
+    flex: 1;
+  }
+  .search-input {
+    border-radius: 4px;
+    border: 1px solid #bbb;
+    padding: 0.5em 0.8em;
+    font-size: 1em;
+    background: #fafbfc;
+    transition: border 0.2s;
+  }
+  .search-input:focus {
+    border: 1.5px solid #007bff;
+    outline: none;
+    background: #fff;
+  }
+  .refresh-btn {
+    margin-left: 1em;
+    padding: 0.5em 1.2em;
+    font-size: 1em;
+    border-radius: 4px;
+    border: none;
+    background: #007bff;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .refresh-btn:hover {
+    background: #0056b3;
+  }
+  .enhanced-summary-cards {
+    display: flex;
+    gap: 2em;
+    margin: 2em 0 1.5em 0;
+    justify-content: center;
+  }
+  .summary-card {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 2px 12px #e0e0e0;
+    padding: 1.2em 2.2em;
+    min-width: 160px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: box-shadow 0.2s, transform 0.2s;
+  }
+  .summary-card.total { border-top: 4px solid #007bff; }
+  .summary-card.active { border-top: 4px solid #28a745; }
+  .summary-card.filtered { border-top: 4px solid #ffc107; }
+  .summary-card:hover {
+    box-shadow: 0 4px 24px #b0b0b0;
+    transform: translateY(-2px) scale(1.03);
+  }
+  .summary-title {
+    font-size: 1.1em;
+    color: #666;
+    margin-bottom: 0.3em;
+    font-weight: 500;
+  }
+  .summary-value {
+    font-size: 2.1em;
+    font-weight: 700;
+    color: #222;
+    letter-spacing: 1px;
+  }
+</style>
 <script src="{{ url_for('static', filename='js/devices.js') }}"></script>
 {% endblock %}
