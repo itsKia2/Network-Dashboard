@@ -28,6 +28,21 @@ class NetworkScanner:
         # Detect local IP and MAC
         self.local_ip = self._get_local_ip()
         self.local_mac = self._get_local_mac(self.local_ip)
+        # Fallback: get MAC from local interfaces if not found
+        if not self.local_mac:
+            try:
+                import netifaces
+                for iface in netifaces.interfaces():
+                    addrs = netifaces.ifaddresses(iface)
+                    if netifaces.AF_INET in addrs:
+                        for addr in addrs[netifaces.AF_INET]:
+                            if addr.get('addr') == self.local_ip:
+                                mac = addrs.get(netifaces.AF_LINK, [{}])[0].get('addr')
+                                if mac:
+                                    self.local_mac = mac
+                                    break
+            except ImportError:
+                print("Warning: netifaces not installed. Local MAC fallback unavailable.")
 
     def _get_local_ip(self):
         try:
