@@ -1,0 +1,6 @@
+[2025-08-03 00:57:29] TERMINAL_CONNECT: User 'omer' from IP 127.0.0.1 connected to 192.168.0.154 (MAC N/A)
+[2025-08-03 00:57:32] TERMINAL_COMMAND: User 'omer' from IP 127.0.0.1 ran command on 192.168.0.154: ls
+[2025-08-03 00:57:38] TERMINAL_COMMAND: User 'omer' from IP 127.0.0.1 ran command on 192.168.0.154: neofetch
+[2025-08-03 00:57:41] TERMINAL_COMMAND: User 'omer' from IP 127.0.0.1 ran command on 192.168.0.154: exit
+[2025-08-03 00:57:44] TERMINAL_COMMAND: User 'omer' from IP 127.0.0.1 ran command on 192.168.0.154: ls
+[2025-08-03 00:57:46] TERMINAL_DISCONNECT: User 'omer' from IP 127.0.0.1 disconnected from 192.168.0.154

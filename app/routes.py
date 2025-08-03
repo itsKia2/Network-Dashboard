@@ -4,6 +4,7 @@ from flask import session as flask_session
 from app import socketio
 from app.models import Device, NetworkScan, Stats, User
 from app.scanner import NetworkScanner
+from app.audit_log import write_log
 import threading
 import time
 from datetime import datetime
@@ -44,6 +45,8 @@ def login():
         if User.check_user(username, password):
             session['logged_in'] = True
             session['username'] = username
+            user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+            write_log(f"LOGIN: User '{username}' from IP {user_ip}")
             return redirect(url_for('main.dashboard'))
         else:
             error = 'Invalid username or password. Please try again.'
@@ -63,6 +66,8 @@ def register():
                 User.set_user(username, password)
                 session['logged_in'] = True
                 session['username'] = username
+                user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+                write_log(f"REGISTER: User '{username}' from IP {user_ip}")
                 return redirect(url_for('main.dashboard'))
             except Exception as e:
                 error = 'Registration failed. Username may already exist.'
@@ -109,9 +114,11 @@ def handle_run_command(data):
     password = data.get('password')
     command = data.get('command')
     os_type = data.get('os', '').lower()
+    private_key = data.get('private_key')  # PEM string or file path
+    passphrase = data.get('passphrase')
 
-    if not all([ip, username, password, command]):
-        print(f"[DEBUG] Missing required fields: ip={ip}, username={username}, password={'***' if password else None}, command={command}")
+    if not all([ip, username, command]):
+        print(f"[DEBUG] Missing required fields: ip={ip}, username={username}, command={command}")
         emit('command_error', {'error': 'Missing required fields'})
         return
 
@@ -144,7 +151,54 @@ def handle_run_command(data):
             print(f"[SSH] Connecting to SSH at {ip}")
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(ip, username=username, password=password, timeout=10)
+            connected = False
+            # Try private key if provided
+            if private_key:
+                try:
+                    import io
+                    key_obj = None
+                    if 'BEGIN' in private_key:
+                        key_stream = io.StringIO(private_key)
+                    else:
+                        # Assume it's a file path
+                        key_stream = open(private_key, 'r')
+                    try:
+                        key_obj = paramiko.RSAKey.from_private_key(key_stream, password=passphrase)
+                    except Exception:
+                        key_stream.seek(0)
+                        try:
+                            key_obj = paramiko.Ed25519Key.from_private_key(key_stream, password=passphrase)
+                        except Exception:
+                            key_stream.seek(0)
+                            try:
+                                key_obj = paramiko.ECDSAKey.from_private_key(key_stream, password=passphrase)
+                            except Exception:
+                                key_stream.seek(0)
+                                try:
+                                    key_obj = paramiko.DSSKey.from_private_key(key_stream, password=passphrase)
+                                except Exception as e:
+                                    print(f"[SSH] Could not load private key: {e}")
+                                    emit('command_error', {'error': f'Could not load private key: {e}'})
+                                    key_stream.close()
+                                    raise
+                    key_stream.close()
+                    ssh.connect(ip, username=username, pkey=key_obj, timeout=10, allow_agent=False, look_for_keys=False)
+                    connected = True
+                except Exception as e:
+                    print(f"[SSH] Private key auth failed: {e}")
+                    emit('command_error', {'error': f'Private key auth failed: {e}'})
+            if not connected:
+                # Fallback to password
+                try:
+                    ssh.connect(ip, username=username, password=password, timeout=10, allow_agent=False, look_for_keys=False)
+                    connected = True
+                except Exception as e:
+                    print(f"[SSH] Password auth failed: {e}")
+                    emit('command_error', {'error': f'Password auth failed: {e}'})
+            if not connected:
+                emit('command_error', {'error': 'SSH authentication failed (key and password)'} )
+                emit('command_done', {})
+                return
             print(f"[SSH] Connected. Executing command: {command}")
             stdin, stdout, stderr = ssh.exec_command(command)
             # Stream output in real time
@@ -204,10 +258,10 @@ def get_session_id():
 @socketio.on('terminal_connect')
 def handle_terminal_connect(data):
     sid = get_session_id()
-    ip = data.get('ip')
-    username = data.get('username')
-    password = data.get('password')
-    os_type = data.get('os', '').lower()
+    user = flask_session.get('username')
+    user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    mac = data.get('mac', 'N/A')
+    write_log(f"TERMINAL_CONNECT: User '{user}' from IP {user_ip} connected to {data.get('ip')} (MAC {mac})")
     with session_lock:
         if sid in terminal_sessions:
             # Clean up any previous session
@@ -219,8 +273,8 @@ def handle_terminal_connect(data):
                 pass
             terminal_sessions.pop(sid, None)
         try:
-            if os_type == 'windows':
-                session = winrm.Session(f'http://{ip}:5985/wsman', auth=(username, password))
+            if data.get('os', '').lower() == 'windows':
+                session = winrm.Session(f'http://{data.get('ip')}:5985/wsman', auth=(data.get('username'), data.get('password')))
                 # Test connection
                 r = session.run_cmd('echo connected')
                 if r.status_code == 0:
@@ -229,9 +283,51 @@ def handle_terminal_connect(data):
                 else:
                     emit('terminal_error', {'error': r.std_err.decode()})
             else:
+                private_key = data.get('private_key')
+                passphrase = data.get('passphrase')
                 ssh = paramiko.SSHClient()
                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                ssh.connect(ip, username=username, password=password, timeout=10)
+                connected = False
+                if private_key:
+                    try:
+                        import io
+                        key_obj = None
+                        if 'BEGIN' in private_key:
+                            key_stream = io.StringIO(private_key)
+                        else:
+                            key_stream = open(private_key, 'r')
+                        try:
+                            key_obj = paramiko.RSAKey.from_private_key(key_stream, password=passphrase)
+                        except Exception:
+                            key_stream.seek(0)
+                            try:
+                                key_obj = paramiko.Ed25519Key.from_private_key(key_stream, password=passphrase)
+                            except Exception:
+                                key_stream.seek(0)
+                                try:
+                                    key_obj = paramiko.ECDSAKey.from_private_key(key_stream, password=passphrase)
+                                except Exception:
+                                    key_stream.seek(0)
+                                    try:
+                                        key_obj = paramiko.DSSKey.from_private_key(key_stream, password=passphrase)
+                                    except Exception as e:
+                                        emit('terminal_error', {'error': f'Could not load private key: {e}'})
+                                        key_stream.close()
+                                        raise
+                        key_stream.close()
+                        ssh.connect(data.get('ip'), username=data.get('username'), pkey=key_obj, timeout=10, allow_agent=False, look_for_keys=False)
+                        connected = True
+                    except Exception as e:
+                        emit('terminal_error', {'error': f'Private key auth failed: {e}'})
+                if not connected:
+                    try:
+                        ssh.connect(data.get('ip'), username=data.get('username'), password=data.get('password'), timeout=10, allow_agent=False, look_for_keys=False)
+                        connected = True
+                    except Exception as e:
+                        emit('terminal_error', {'error': f'Password auth failed: {e}'})
+                if not connected:
+                    emit('terminal_error', {'error': 'SSH authentication failed (key and password)'})
+                    return
                 terminal_sessions[sid] = ssh
                 emit('terminal_connected', {'output': '[SSH Connected]\n'})
         except Exception as e:
@@ -240,22 +336,24 @@ def handle_terminal_connect(data):
 @socketio.on('terminal_command')
 def handle_terminal_command(data):
     sid = get_session_id()
-    command = data.get('command')
-    os_type = data.get('os', '').lower()
+    user = flask_session.get('username')
+    user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    cmd = data.get('command')
+    write_log(f"TERMINAL_COMMAND: User '{user}' from IP {user_ip} ran command on {data.get('ip')}: {cmd}")
     with session_lock:
         session_obj = terminal_sessions.get(sid)
         if not session_obj:
             emit('terminal_error', {'error': 'No active terminal session'})
             return
         try:
-            if os_type == 'windows':
-                r = session_obj.run_cmd(command)
+            if data.get('os', '').lower() == 'windows':
+                r = session_obj.run_cmd(cmd)
                 if r.status_code == 0:
                     emit('terminal_output', {'output': r.std_out.decode()})
                 else:
                     emit('terminal_error', {'error': r.std_err.decode()})
             else:
-                stdin, stdout, stderr = session_obj.exec_command(command)
+                stdin, stdout, stderr = session_obj.exec_command(cmd)
                 for line in iter(stdout.readline, ""):
                     if not line:
                         break
@@ -269,6 +367,9 @@ def handle_terminal_command(data):
 @socketio.on('terminal_disconnect')
 def handle_terminal_disconnect(data):
     sid = get_session_id()
+    user = flask_session.get('username')
+    user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    write_log(f"TERMINAL_DISCONNECT: User '{user}' from IP {user_ip} disconnected from {data.get('ip')}")
     with session_lock:
         session_obj = terminal_sessions.pop(sid, None)
         if session_obj:
@@ -304,6 +405,10 @@ def trigger_scan():
             'success': False,
             'error': 'Scan already in progress'
         }), 400
+
+    user = session.get('username')
+    user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    write_log(f"SCAN: User '{user}' triggered a network scan from IP {user_ip}")
 
     # Start scan in background thread
     scan_thread = threading.Thread(target=perform_network_scan)
